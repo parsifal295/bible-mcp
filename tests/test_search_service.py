@@ -4,7 +4,6 @@ from bible_mcp.db.connection import connect_db
 from bible_mcp.db.schema import ensure_schema
 from bible_mcp.index.fts import rebuild_fts_indexes
 from bible_mcp.ingest.chunker import build_chunks
-from bible_mcp.query.context import expand_chunk_context
 from bible_mcp.services.search_service import SearchService
 
 
@@ -44,7 +43,7 @@ def test_search_combines_keyword_and_semantic_hits(tmp_path: Path) -> None:
     assert "semantic" in results[0].match_reasons
 
 
-def test_expand_chunk_context_handles_cross_chapter_chunks(tmp_path: Path) -> None:
+def test_search_returns_cross_chapter_context_through_service(tmp_path: Path) -> None:
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
     conn.executemany(
@@ -59,10 +58,12 @@ def test_expand_chunk_context_handles_cross_chapter_chunks(tmp_path: Path) -> No
         ],
     )
     conn.commit()
+    build_chunks(conn, max_verses=3, stride=3)
+    rebuild_fts_indexes(conn)
 
-    rows = expand_chunk_context(conn, "Genesis 1:2", "Genesis 2:1", window=0)
+    service = SearchService(conn, FakeEmbedder(), FakeVectorIndex())
+    results = service.search("천지를", limit=1)
 
-    assert [row["reference"] for row in rows] == [
-        "Genesis 1:2",
-        "Genesis 2:1",
-    ]
+    assert results[0].reference == "Genesis 1:1-Genesis 2:1"
+    assert "태초에 하나님이 천지를 창조하시니라" in results[0].passage_text
+    assert "천지와 만물이 다 이루어지니라" in results[0].passage_text
