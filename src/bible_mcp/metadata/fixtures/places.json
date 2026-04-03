@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "slug": "bethlehem",
+    "display_name": "베들레헴",
+    "latitude": 31.7054,
+    "longitude": 35.2024
+  },
+  {
+    "slug": "galilee",
+    "display_name": "갈릴리",
+    "latitude": 32.8333,
+    "longitude": 35.5833
+  },
+  {
+    "slug": "jerusalem",
+    "display_name": "예루살렘",
+    "latitude": 31.7780,
+    "longitude": 35.2350
+  },
+  {
+    "slug": "jordan-river",
+    "display_name": "요단강",
+    "latitude": 31.8500,
+    "longitude": 35.5500
+  },
+  {
+    "slug": "nazareth",
+    "display_name": "나사렛",
+    "latitude": 32.6996,
+    "longitude": 35.3035
+  }
+]

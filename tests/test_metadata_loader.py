@@ -153,20 +153,26 @@ def test_load_metadata_fixtures_rejects_unknown_entity_type(tmp_path: Path) -> N
         load_metadata_fixtures(fixtures)
 
 
-def test_default_fixture_bundle_contains_representative_people_and_relationships() -> None:
+def test_default_fixture_bundle_contains_representative_people_places_events_and_relationships() -> None:
     assert DEFAULT_FIXTURE_DIR == Path(__file__).resolve().parents[1] / "src" / "bible_mcp" / "metadata" / "fixtures"
 
     bundle = load_metadata_fixtures()
     people_slugs = {person.slug for person in bundle.people}
+    place_slugs = {place.slug for place in bundle.places}
+    event_slugs = {event.slug for event in bundle.events}
     assert {"abraham", "isaac", "jacob", "jesse", "david", "jesus", "peter", "john"} <= people_slugs
-    assert bundle.places == []
-    assert bundle.events == []
-    assert {alias.entity_type for alias in bundle.aliases} == {"people"}
+    assert {"jerusalem", "bethlehem", "nazareth", "galilee", "jordan-river"} <= place_slugs
+    assert {"exodus", "crucifixion", "resurrection"} <= event_slugs
+    assert {alias.entity_type for alias in bundle.aliases} == {"people", "places", "events"}
     assert {link.entity_type for link in bundle.entity_verse_links} == {"people"}
-    aliases = {(alias.entity_slug, alias.alias) for alias in bundle.aliases}
-    assert ("abraham", "Abraham") in aliases
-    assert ("david", "David") in aliases
-    assert ("jesus", "Jesus") in aliases
+    aliases = {(alias.entity_type, alias.entity_slug, alias.alias) for alias in bundle.aliases}
+    assert ("people", "abraham", "Abraham") in aliases
+    assert ("people", "david", "David") in aliases
+    assert ("people", "jesus", "Jesus") in aliases
+    assert ("places", "jerusalem", "Jerusalem") in aliases
+    assert ("places", "nazareth", "Nazareth") in aliases
+    assert ("events", "resurrection", "Resurrection") in aliases
+    assert ("events", "crucifixion", "십자가 사건") in aliases
 
     relation_pairs = {
         (row.source_slug, row.relation_type, row.target_slug)

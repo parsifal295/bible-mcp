@@ -117,6 +117,25 @@ def test_import_metadata_fixtures_populates_people_aliases_and_relationships(tmp
     ]
 
 
+def test_import_metadata_fixtures_imports_default_bundle_places_and_events(tmp_path: Path) -> None:
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+
+    import_metadata_fixtures(conn)
+
+    places = conn.execute(
+        "select slug, display_name from places order by slug"
+    ).fetchall()
+    events = conn.execute(
+        "select slug, display_name from events order by slug"
+    ).fetchall()
+
+    assert ("bethlehem", "베들레헴") in [tuple(row) for row in places]
+    assert ("jerusalem", "예루살렘") in [tuple(row) for row in places]
+    assert ("resurrection", "부활") in [tuple(row) for row in events]
+    assert ("crucifixion", "십자가 처형") in [tuple(row) for row in events]
+
+
 def test_import_metadata_fixtures_replaces_existing_rows_on_rebuild(tmp_path: Path) -> None:
     fixtures = tmp_path / "fixtures"
     fixtures.mkdir()

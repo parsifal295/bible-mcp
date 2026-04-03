@@ -83,5 +83,50 @@
     "entity_type": "people",
     "entity_slug": "john",
     "alias": "사도 요한"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "bethlehem",
+    "alias": "Bethlehem"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "galilee",
+    "alias": "Galilee"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "jerusalem",
+    "alias": "Jerusalem"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "jordan-river",
+    "alias": "Jordan River"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "nazareth",
+    "alias": "Nazareth"
+  },
+  {
+    "entity_type": "events",
+    "entity_slug": "crucifixion",
+    "alias": "Crucifixion"
+  },
+  {
+    "entity_type": "events",
+    "entity_slug": "crucifixion",
+    "alias": "십자가 사건"
+  },
+  {
+    "entity_type": "events",
+    "entity_slug": "exodus",
+    "alias": "Exodus"
+  },
+  {
+    "entity_type": "events",
+    "entity_slug": "resurrection",
+    "alias": "Resurrection"
   }
 ]
