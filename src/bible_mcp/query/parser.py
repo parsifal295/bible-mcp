@@ -12,8 +12,8 @@ class ParsedReference:
     end_verse: int | None
 
 
-REFERENCE_RE = re.compile(r"^\s*(.+?)\s+(\d+):(\d+)(?:-(\d+))?\s*$")
-CHAPTER_RE = re.compile(r"^\s*(.+?)\s+(\d+)장\s*$")
+REFERENCE_RE = re.compile(r"^\s*(.+?)\s*(\d+):(\d+)(?:-(\d+))?\s*$")
+CHAPTER_RE = re.compile(r"^\s*(.+?)\s*(\d+)장\s*$")
 
 
 def _normalize_book(raw_book: str) -> str | None:

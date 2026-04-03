@@ -42,3 +42,30 @@ def test_parse_reference_supports_korean_alias_for_digit_prefixed_book_name() ->
     assert parsed.chapter == 3
     assert parsed.start_verse == 1
     assert parsed.end_verse == 1
+
+
+def test_parse_reference_supports_korean_reference_without_space() -> None:
+    parsed = parse_reference("창1:1")
+    assert parsed is not None
+    assert parsed.book == "Genesis"
+    assert parsed.chapter == 1
+    assert parsed.start_verse == 1
+    assert parsed.end_verse == 1
+
+
+def test_parse_reference_supports_korean_short_book_without_space() -> None:
+    parsed = parse_reference("요3:16")
+    assert parsed is not None
+    assert parsed.book == "John"
+    assert parsed.chapter == 3
+    assert parsed.start_verse == 16
+    assert parsed.end_verse == 16
+
+
+def test_parse_reference_supports_chapter_only_input_without_space() -> None:
+    parsed = parse_reference("롬8장")
+    assert parsed is not None
+    assert parsed.book == "Romans"
+    assert parsed.chapter == 8
+    assert parsed.start_verse is None
+    assert parsed.end_verse is None
