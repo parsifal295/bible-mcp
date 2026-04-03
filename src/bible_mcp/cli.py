@@ -101,6 +101,13 @@ def _app_db_supports_optional_study_tools(config: AppConfig) -> bool:
     return _app_db_has_tables(config, OPTIONAL_STUDY_DB_TABLES)
 
 
+def _app_db_supports_entity_passage_tools(config: AppConfig) -> bool:
+    return _app_db_has_tables(
+        config,
+        OPTIONAL_STUDY_DB_TABLES + ("entity_verse_links",),
+    )
+
+
 def _app_db_supports_relation_tools(config: AppConfig) -> bool:
     return _app_db_has_tables(
         config,
@@ -153,11 +160,18 @@ def serve() -> None:
         if _app_db_supports_optional_study_tools(config):
             related_service = RelatedPassageService(conn, embedder, vector_store)
             entity_service = EntityService(conn)
-            entity_passage_service = EntityPassageService(conn, entity_service, passage_service)
             summarizer = summarize_passage_text
             relation_service = None
             if _app_db_supports_relation_tools(config):
                 relation_service = RelationLookupService(conn, entity_service)
+            if _app_db_supports_entity_passage_tools(config):
+                entity_passage_service = EntityPassageService(
+                    conn,
+                    entity_service,
+                    passage_service,
+                )
+            else:
+                entity_passage_service = None
         else:
             related_service = None
             entity_service = None

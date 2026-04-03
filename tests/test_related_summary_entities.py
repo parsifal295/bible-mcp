@@ -55,6 +55,71 @@ def _write_base_runtime_db(path: Path) -> None:
     conn.close()
 
 
+def _write_optional_study_db(path: Path, include_entity_verse_links: bool) -> None:
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        create table verses (
+            id integer primary key,
+            translation text,
+            book text not null,
+            book_order integer not null,
+            chapter integer not null,
+            verse integer not null,
+            reference text not null unique,
+            testament text,
+            text text not null
+        );
+
+        create table passage_chunks (
+            id integer primary key,
+            chunk_id text not null unique,
+            start_ref text not null,
+            end_ref text not null,
+            book text not null,
+            chapter_range text not null,
+            text text not null,
+            token_count integer not null,
+            chunk_strategy text not null
+        );
+
+        create virtual table passage_chunks_fts using fts5(
+            chunk_id,
+            text,
+            content='',
+            tokenize='unicode61'
+        );
+
+        create table people (
+            id integer primary key,
+            slug text not null unique,
+            display_name text not null,
+            description text
+        );
+
+        create table entity_aliases (
+            id integer primary key,
+            entity_type text not null,
+            entity_slug text not null,
+            alias text not null
+        );
+        """
+    )
+    if include_entity_verse_links:
+        conn.execute(
+            """
+            create table entity_verse_links (
+                id integer primary key,
+                entity_type text not null,
+                entity_slug text not null,
+                reference text not null
+            )
+            """
+        )
+    conn.commit()
+    conn.close()
+
+
 def test_summarize_passage_text_extracts_keywords() -> None:
     summary = summarize_passage_text("믿음은 바라는 것들의 실상이요 보이지 않는 것들의 증거니")
     assert "믿음" in summary["keywords"]
@@ -131,6 +196,63 @@ def test_serve_omits_optional_tools_when_entity_tables_are_missing(
     assert captured["related_service"] is None
     assert captured["summarizer"] is None
     assert captured["entity_service"] is None
+    assert captured["relation_service"] is None
+    assert captured["entity_passage_service"] is None
+
+
+def test_serve_omits_entity_passage_service_when_entity_verse_links_are_missing(
+    tmp_path, monkeypatch
+) -> None:
+    app_db_path = tmp_path / "app.sqlite"
+    _write_optional_study_db(app_db_path, include_entity_verse_links=False)
+
+    config = AppConfig(
+        source=SourceBibleConfig(path=tmp_path / "source.sqlite", table="verses"),
+        app_db_path=app_db_path,
+        faiss_index_path=tmp_path / "chunks.faiss",
+    )
+
+    captured = {}
+
+    class FakeEmbedder:
+        def __init__(self, model_name: str) -> None:
+            self.model_name = model_name
+
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            return [[1.0, 0.0] for _text in texts]
+
+    def fake_create_mcp_server(
+        search_service,
+        passage_service,
+        related_service,
+        summarizer,
+        entity_service,
+        relation_service,
+        entity_passage_service,
+    ):
+        captured["related_service"] = related_service
+        captured["summarizer"] = summarizer
+        captured["entity_service"] = entity_service
+        captured["relation_service"] = relation_service
+        captured["entity_passage_service"] = entity_passage_service
+
+        class FakeServer:
+            def run(self):
+                return None
+
+        return FakeServer()
+
+    monkeypatch.setattr("bible_mcp.cli.load_config", lambda: config)
+    monkeypatch.setattr("bible_mcp.cli.validate_runtime_installation", lambda config: object())
+    monkeypatch.setattr("bible_mcp.cli.SentenceTransformerEmbedder", FakeEmbedder)
+    monkeypatch.setattr("bible_mcp.cli.create_mcp_server", fake_create_mcp_server)
+
+    result = CliRunner().invoke(app, ["serve"])
+
+    assert result.exit_code == 0
+    assert captured["related_service"] is not None
+    assert captured["summarizer"] is summarize_passage_text
+    assert isinstance(captured["entity_service"], EntityService)
     assert captured["relation_service"] is None
     assert captured["entity_passage_service"] is None
 
