@@ -64,6 +64,64 @@ def fetch_theographic_snapshot(config: TheographicConfig) -> Path:
         raise RuntimeError("Failed to fetch Theographic snapshot") from exc
 
 
+def resolve_theographic_snapshot_dir(
+    config: TheographicConfig,
+    ref: str | None = None,
+) -> Path:
+    requested_ref = ref or config.ref
+    candidate = config.vendor_dir / requested_ref
+    if candidate.is_dir():
+        return candidate
+
+    if not config.vendor_dir.is_dir():
+        raise FileNotFoundError(
+            "No Theographic snapshot found. Run fetch-theographic first."
+        )
+
+    matched: list[tuple[Path, str | None]] = []
+    for snapshot_dir in config.vendor_dir.iterdir():
+        if not snapshot_dir.is_dir() or snapshot_dir.name.startswith("."):
+            continue
+        manifest_path = snapshot_dir / "manifest.json"
+        if not manifest_path.is_file():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        source_ref = manifest.get("source_ref")
+        resolved_commit = manifest.get("resolved_commit")
+        if source_ref == requested_ref or resolved_commit == requested_ref:
+            fetched_at = manifest.get("fetched_at")
+            matched.append((snapshot_dir, fetched_at if isinstance(fetched_at, str) else None))
+
+    if not matched:
+        raise FileNotFoundError(
+            "No Theographic snapshot found. Run fetch-theographic first."
+        )
+    if len(matched) == 1:
+        return matched[0][0]
+
+    dated_matches: list[tuple[Path, datetime]] = []
+    for snapshot_dir, fetched_at in matched:
+        if not fetched_at:
+            raise RuntimeError(
+                f"Multiple Theographic snapshots match ref '{requested_ref}'. "
+                "Run fetch-theographic or remove stale snapshots."
+            )
+        try:
+            parsed = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Multiple Theographic snapshots match ref '{requested_ref}' but fetched_at is invalid."
+            ) from exc
+        dated_matches.append((snapshot_dir, parsed))
+
+    dated_matches.sort(key=lambda item: item[1], reverse=True)
+    return dated_matches[0][0]
+
+
 def _resolve_commit(repo: str, ref: str) -> str:
     encoded_ref = urllib.parse.quote(ref, safe="")
     url = f"{GITHUB_API_BASE}/repos/{repo}/commits/{encoded_ref}"

@@ -6,7 +6,8 @@ import pytest
 
 from bible_mcp.db.connection import connect_db
 from bible_mcp.db.schema import ensure_schema
-from bible_mcp.ingest.metadata_importer import import_metadata_fixtures
+from bible_mcp.ingest.metadata_importer import import_metadata_bundle, import_metadata_fixtures
+from bible_mcp.metadata.loader import load_metadata_fixtures
 
 
 def _write_fixture(path: Path, name: str, payload) -> None:
@@ -414,3 +415,26 @@ def test_import_metadata_fixtures_rejects_unresolvable_entity_verse_reference(tm
 
     with pytest.raises(LookupError, match="Entity verse link reference"):
         import_metadata_fixtures(conn, fixtures_dir=fixtures)
+
+
+def test_import_metadata_bundle_uses_supplied_reference_validator_and_imports_rows(
+    tmp_path: Path,
+) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    _write_minimal_metadata_bundle(fixtures)
+    bundle = load_metadata_fixtures(fixtures)
+
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+
+    seen_references: list[str] = []
+
+    def reference_validator(reference: str) -> None:
+        seen_references.append(reference)
+
+    import_metadata_bundle(conn, bundle, reference_validator=reference_validator)
+
+    assert seen_references == ["Genesis 12:1"]
+    assert conn.execute("select count(*) from people").fetchone()[0] == 2
+    assert conn.execute("select count(*) from entity_verse_links").fetchone()[0] == 1

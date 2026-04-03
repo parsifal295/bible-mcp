@@ -9,6 +9,7 @@ from bible_mcp.config import TheographicConfig
 from bible_mcp.vendor.theographic_fetcher import (
     REQUIRED_FILENAMES,
     fetch_theographic_snapshot,
+    resolve_theographic_snapshot_dir,
 )
 
 
@@ -113,3 +114,86 @@ def test_fetch_theographic_snapshot_cleans_staging_dir_on_failure(
         path for path in config.vendor_dir.iterdir() if path.is_dir() and ".staging-" in path.name
     ]
     assert staging_dirs == []
+
+
+def test_resolve_theographic_snapshot_dir_matches_manifest_source_ref_for_commit_named_dir(
+    tmp_path: Path,
+) -> None:
+    vendor_dir = tmp_path / "vendor"
+    commit_dir = vendor_dir / ("a" * 40)
+    commit_dir.mkdir(parents=True)
+    (commit_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "source_repo": "example/theographic",
+                "source_ref": "stable",
+                "resolved_commit": "a" * 40,
+                "license": "CC BY-SA 4.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = TheographicConfig(vendor_dir=vendor_dir, ref="stable")
+
+    resolved = resolve_theographic_snapshot_dir(config)
+
+    assert resolved == commit_dir
+
+
+def test_resolve_theographic_snapshot_dir_prefers_newest_fetched_at_for_same_source_ref(
+    tmp_path: Path,
+) -> None:
+    vendor_dir = tmp_path / "vendor"
+    older_dir = vendor_dir / ("b" * 40)
+    newer_dir = vendor_dir / ("c" * 40)
+    older_dir.mkdir(parents=True)
+    newer_dir.mkdir(parents=True)
+    (older_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "source_repo": "example/theographic",
+                "source_ref": "stable",
+                "resolved_commit": "b" * 40,
+                "fetched_at": "2024-01-01T00:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (newer_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "source_repo": "example/theographic",
+                "source_ref": "stable",
+                "resolved_commit": "c" * 40,
+                "fetched_at": "2024-02-01T00:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = TheographicConfig(vendor_dir=vendor_dir, ref="stable")
+
+    resolved = resolve_theographic_snapshot_dir(config)
+
+    assert resolved == newer_dir
+
+
+def test_resolve_theographic_snapshot_dir_does_not_fallback_to_unrelated_stale_snapshot(
+    tmp_path: Path,
+) -> None:
+    vendor_dir = tmp_path / "vendor"
+    stale_dir = vendor_dir / ("d" * 40)
+    stale_dir.mkdir(parents=True)
+    (stale_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "source_repo": "example/theographic",
+                "source_ref": "old-ref",
+                "resolved_commit": "d" * 40,
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = TheographicConfig(vendor_dir=vendor_dir, ref="new-ref")
+
+    with pytest.raises(FileNotFoundError, match="fetch-theographic"):
+        resolve_theographic_snapshot_dir(config)

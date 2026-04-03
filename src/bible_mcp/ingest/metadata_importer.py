@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 
 from bible_mcp.domain.metadata import ENTITY_TYPES
@@ -33,9 +34,8 @@ def _require_entity(entity_lookup: dict[str, set[str]], entity_type: str, entity
         raise ValueError(f"missing {context.lower()} entity: {entity_type}/{entity_slug}")
 
 
-def _validate_bundle(conn: sqlite3.Connection, bundle) -> None:
+def _validate_bundle(bundle, reference_validator: Callable[[str], None]) -> None:
     entity_lookup = _entity_lookup(bundle)
-    passage_service = PassageService(conn)
 
     for alias in bundle.aliases:
         _require_entity(
@@ -53,7 +53,7 @@ def _validate_bundle(conn: sqlite3.Connection, bundle) -> None:
             "Entity verse link",
         )
         try:
-            passage_service.lookup(link.reference)
+            reference_validator(link.reference)
         except (LookupError, ValueError) as exc:
             raise type(exc)(f"Entity verse link reference: {exc}") from exc
 
@@ -77,19 +77,12 @@ def _delete_metadata_rows(conn: sqlite3.Connection) -> None:
         conn.execute(f"delete from {table}")
 
 
-def import_metadata_fixtures(
+def import_metadata_bundle(
     conn: sqlite3.Connection,
-    fixtures_dir: Path = DEFAULT_FIXTURE_DIR,
+    bundle,
+    reference_validator: Callable[[str], None],
 ) -> None:
-    """Import repo-managed metadata fixtures into an existing schema.
-
-    The caller is responsible for ensuring the metadata tables already exist.
-    This function manages an import-local savepoint so failures roll back only
-    the metadata import without committing or disturbing any caller-owned outer
-    transaction.
-    """
-    bundle = load_metadata_fixtures(fixtures_dir)
-    _validate_bundle(conn, bundle)
+    _validate_bundle(bundle, reference_validator)
 
     conn.execute("savepoint metadata_import")
     try:
@@ -153,3 +146,19 @@ def import_metadata_fixtures(
         raise
     else:
         conn.execute("release metadata_import")
+
+
+def import_metadata_fixtures(
+    conn: sqlite3.Connection,
+    fixtures_dir: Path = DEFAULT_FIXTURE_DIR,
+) -> None:
+    """Import repo-managed metadata fixtures into an existing schema.
+
+    The caller is responsible for ensuring the metadata tables already exist.
+    This function manages an import-local savepoint so failures roll back only
+    the metadata import without committing or disturbing any caller-owned outer
+    transaction.
+    """
+    bundle = load_metadata_fixtures(fixtures_dir)
+    passage_service = PassageService(conn)
+    import_metadata_bundle(conn, bundle, reference_validator=passage_service.lookup)

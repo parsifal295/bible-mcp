@@ -12,8 +12,12 @@ from bible_mcp.index.faiss_store import FaissChunkIndex
 from bible_mcp.index.fts import rebuild_fts_indexes
 from bible_mcp.ingest.chunker import build_chunks
 from bible_mcp.ingest.importer import import_verses
-from bible_mcp.ingest.metadata_importer import import_metadata_fixtures
-from bible_mcp.ingest.source_db import SourceSchemaError, validate_source_database
+from bible_mcp.ingest.metadata_importer import import_metadata_bundle, import_metadata_fixtures
+from bible_mcp.ingest.source_db import (
+    SourceSchemaError,
+    validate_source_database,
+    validate_source_reference,
+)
 from bible_mcp.mcp_server import create_mcp_server
 from bible_mcp.services.entity_query_router import EntityQueryRouter
 from bible_mcp.services.entity_service import EntityService
@@ -23,7 +27,12 @@ from bible_mcp.services.passage_service import PassageService
 from bible_mcp.services.relation_service import RelationLookupService
 from bible_mcp.services.search_service import SearchService
 from bible_mcp.services.summarizer import summarize_passage_text
-from bible_mcp.vendor.theographic_fetcher import fetch_theographic_snapshot
+from bible_mcp.vendor.metadata_overlay import load_metadata_overlay
+from bible_mcp.vendor.theographic_fetcher import (
+    fetch_theographic_snapshot,
+    resolve_theographic_snapshot_dir,
+)
+from bible_mcp.vendor.theographic_normalizer import normalize_theographic_snapshot
 
 app = typer.Typer(help="Korean Bible MCP server")
 REQUIRED_APP_DB_TABLES = ("verses", "passage_chunks", "passage_chunks_fts")
@@ -172,6 +181,30 @@ def fetch_theographic() -> None:
     theographic_config = load_theographic_config()
     snapshot_path = fetch_theographic_snapshot(theographic_config)
     typer.echo(f"Theographic snapshot fetched: {snapshot_path}")
+
+
+@app.command("sync-theographic")
+def sync_theographic() -> None:
+    config = load_config()
+    validate_source_database(config.source)
+    snapshot_dir = resolve_theographic_snapshot_dir(config.theographic)
+    overlay = load_metadata_overlay()
+    bundle = normalize_theographic_snapshot(
+        snapshot_dir,
+        overlay,
+        link_limit=config.theographic.link_limit,
+    )
+    conn = connect_db(config.app_db_path)
+    ensure_schema(conn)
+    import_metadata_bundle(
+        conn,
+        bundle,
+        reference_validator=lambda reference: validate_source_reference(
+            config.source,
+            reference,
+        ),
+    )
+    typer.echo(f"Theographic sync complete: {snapshot_dir}")
 
 
 @app.command()

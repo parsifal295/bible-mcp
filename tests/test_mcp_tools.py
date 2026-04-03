@@ -13,6 +13,7 @@ from bible_mcp.db.schema import ensure_schema
 from bible_mcp.index.faiss_store import FaissChunkIndex
 from bible_mcp.mcp_server import build_tool_handlers, create_mcp_server
 from bible_mcp.ingest.metadata_importer import import_metadata_fixtures
+from bible_mcp.metadata.models import MetadataBundle
 from bible_mcp.services.entity_query_router import EntityQueryRouter
 from bible_mcp.services.entity_service import EntityService
 from bible_mcp.services.entity_passage_service import EntityPassageService
@@ -924,3 +925,67 @@ def test_fetch_theographic_command_fetches_snapshot_and_prints_result(monkeypatc
     assert result.exit_code == 0
     fetch_mock.assert_called_once_with(theographic_config)
     assert "abc123" in result.stdout
+
+
+def test_sync_theographic_command_normalizes_and_imports_with_source_reference_validation(
+    monkeypatch,
+) -> None:
+    config = Mock()
+    config.source = Mock()
+    config.theographic.ref = "test-ref"
+    config.theographic.link_limit = 77
+    snapshot_dir = Path("data/vendor/theographic/test-ref")
+    overlay = object()
+    bundle = MetadataBundle()
+
+    validate_source_db_mock = Mock()
+    normalize_mock = Mock(return_value=bundle)
+    validate_source_reference_mock = Mock()
+    call_order: list[str] = []
+    fake_conn = object()
+
+    monkeypatch.setattr("bible_mcp.cli.load_config", lambda: config)
+    monkeypatch.setattr(
+        "bible_mcp.cli.validate_source_database",
+        lambda loaded: (call_order.append("validate_source_database"), validate_source_db_mock(loaded)),
+    )
+    monkeypatch.setattr(
+        "bible_mcp.cli.resolve_theographic_snapshot_dir",
+        lambda loaded, ref=None: snapshot_dir,
+    )
+    monkeypatch.setattr("bible_mcp.cli.load_metadata_overlay", lambda: overlay)
+    monkeypatch.setattr("bible_mcp.cli.normalize_theographic_snapshot", normalize_mock)
+    monkeypatch.setattr("bible_mcp.cli.connect_db", lambda path: fake_conn)
+    monkeypatch.setattr(
+        "bible_mcp.cli.ensure_schema",
+        lambda conn: call_order.append("ensure_schema"),
+    )
+    monkeypatch.setattr(
+        "bible_mcp.cli.validate_source_reference",
+        lambda source, reference: validate_source_reference_mock(source, reference),
+    )
+
+    def fake_import_metadata_bundle(conn, payload_bundle, reference_validator):
+        call_order.append("import_metadata_bundle")
+        assert conn is fake_conn
+        assert payload_bundle is bundle
+        reference_validator("Genesis 1:1")
+
+    monkeypatch.setattr("bible_mcp.cli.import_metadata_bundle", fake_import_metadata_bundle)
+
+    result = CliRunner().invoke(app, ["sync-theographic"], env={})
+
+    assert result.exit_code == 0
+    validate_source_db_mock.assert_called_once_with(config.source)
+    normalize_mock.assert_called_once_with(
+        snapshot_dir,
+        overlay,
+        link_limit=77,
+    )
+    validate_source_reference_mock.assert_called_once_with(config.source, "Genesis 1:1")
+    assert call_order == [
+        "validate_source_database",
+        "ensure_schema",
+        "import_metadata_bundle",
+    ]
+    assert "Theographic sync complete" in result.stdout
