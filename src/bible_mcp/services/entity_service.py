@@ -11,10 +11,10 @@ class EntityService:
 
         limit = int(limit)
         if limit < 1:
-            return []
+            raise ValueError("limit must be at least 1")
 
         match_priority = {"display_name": 0, "alias": 1, "slug": 2}
-        candidates: dict[str, dict] = {}
+        candidates: dict[tuple[str, str], dict] = {}
 
         match_queries = (
             (
@@ -58,9 +58,10 @@ class EntityService:
                     "matched_by": matched_by,
                     "_rank": match_priority[matched_by],
                 }
-                existing = candidates.get(candidate["slug"])
+                identity = (candidate["entity_type"], candidate["slug"])
+                existing = candidates.get(identity)
                 if existing is None or candidate["_rank"] < existing["_rank"]:
-                    candidates[candidate["slug"]] = candidate
+                    candidates[identity] = candidate
 
         ordered = sorted(
             candidates.values(),

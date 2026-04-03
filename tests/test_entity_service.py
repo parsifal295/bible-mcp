@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from bible_mcp.db.connection import connect_db
 from bible_mcp.db.schema import ensure_schema
 from bible_mcp.services.entity_service import EntityService
@@ -99,3 +101,35 @@ def test_search_respects_entity_type_filter_and_limit(tmp_path) -> None:
             "matched_by": "display_name",
         }
     ]
+
+
+def test_search_keeps_highest_priority_match_for_same_entity(tmp_path) -> None:
+    conn, service = _build_service(tmp_path)
+    conn.execute(
+        "insert into people(slug, display_name, description) values (?, ?, ?)",
+        ("saul", "Saul", "same entity"),
+    )
+    conn.execute(
+        "insert into entity_aliases(entity_type, entity_slug, alias) values (?, ?, ?)",
+        ("people", "saul", "Saul"),
+    )
+    conn.commit()
+
+    matches = service.search("Saul", limit=10)
+
+    assert matches == [
+        {
+            "entity_type": "people",
+            "slug": "saul",
+            "display_name": "Saul",
+            "description": "same entity",
+            "matched_by": "display_name",
+        }
+    ]
+
+
+def test_search_rejects_limit_below_one(tmp_path) -> None:
+    conn, service = _build_service(tmp_path)
+
+    with pytest.raises(ValueError, match="limit must be at least 1"):
+        service.search("Saul", limit=0)
