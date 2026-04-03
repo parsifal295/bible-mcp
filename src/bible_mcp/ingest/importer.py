@@ -145,3 +145,11 @@ def import_verses(config: AppConfig, conn: sqlite3.Connection) -> None:
                     record.text,
                 ),
             )
+
+
+def reset_indexes(conn: sqlite3.Connection) -> None:
+    with conn:
+        conn.execute("delete from verses_fts")
+        conn.execute("delete from passage_chunks")
+        conn.execute("delete from passage_chunks_fts")
+        conn.execute("delete from chunk_embeddings")
