@@ -4,6 +4,8 @@
 
 V2 metadata slice: `bible-mcp index` also imports the repo-managed metadata fixtures so optional entity search and entity relation MCP tools can be enabled at serve time when the metadata tables are present.
 
+V2 entity search defaults to `people` for backwards compatibility; to search bundled place or event metadata, call `search_entities` with an explicit `entity_type` such as `places` or `events`.
+
 ## Setup
 
 1. Create and activate a virtual environment.
