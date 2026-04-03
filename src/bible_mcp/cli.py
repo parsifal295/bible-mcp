@@ -82,7 +82,7 @@ def validate_runtime_installation(config: AppConfig) -> FaissChunkIndex:
     vector_store = FaissChunkIndex(config.faiss_index_path)
     try:
         vector_store.load()
-        if vector_store.id_map != passage_chunk_ids:
+        if sorted(vector_store.id_map) != sorted(passage_chunk_ids):
             raise RuntimeError(
                 "FAISS mapping ids do not match passage_chunks in app DB"
             )

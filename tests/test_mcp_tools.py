@@ -205,6 +205,27 @@ def test_doctor_fails_when_faiss_mapping_ids_do_not_match_passage_chunks(
     assert "passage_chunks" in result.stdout
 
 
+def test_doctor_allows_same_chunk_ids_in_different_db_row_order(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source_db = tmp_path / "source.sqlite"
+    app_db = tmp_path / "app.sqlite"
+    faiss_path = tmp_path / "chunks.faiss"
+
+    _write_source_db(source_db)
+    _write_app_db_with_chunk_ids(app_db, ["chunk-b", "chunk-a"])
+    FaissChunkIndex(faiss_path).build([("chunk-a", [1.0, 0.0]), ("chunk-b", [0.0, 1.0])])
+
+    monkeypatch.setenv("BIBLE_SOURCE_DB", str(source_db))
+    monkeypatch.setenv("BIBLE_APP_DB", str(app_db))
+    monkeypatch.setenv("BIBLE_FAISS_INDEX", str(faiss_path))
+
+    result = CliRunner().invoke(app, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "Doctor check passed" in result.stdout
+
+
 def test_serve_fails_before_startup_when_app_db_is_missing(tmp_path: Path, monkeypatch) -> None:
     source_db = tmp_path / "source.sqlite"
     faiss_path = tmp_path / "chunks.faiss"
