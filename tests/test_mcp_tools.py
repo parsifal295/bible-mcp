@@ -910,3 +910,17 @@ def test_index_imports_metadata_before_chunk_and_index_rebuild(
         "vector_store:chunks.faiss",
         "index_chunk_embeddings",
     ]
+
+
+def test_fetch_theographic_command_fetches_snapshot_and_prints_result(monkeypatch) -> None:
+    theographic_config = object()
+
+    fetch_mock = Mock(return_value=Path("data/vendor/theographic/abc123"))
+    monkeypatch.setattr("bible_mcp.cli.load_theographic_config", lambda: theographic_config)
+    monkeypatch.setattr("bible_mcp.cli.fetch_theographic_snapshot", fetch_mock)
+
+    result = CliRunner().invoke(app, ["fetch-theographic"], env={})
+
+    assert result.exit_code == 0
+    fetch_mock.assert_called_once_with(theographic_config)
+    assert "abc123" in result.stdout

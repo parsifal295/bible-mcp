@@ -4,7 +4,7 @@ from pathlib import Path
 
 import typer
 
-from bible_mcp.config import AppConfig, SourceBibleConfig
+from bible_mcp.config import AppConfig, SourceBibleConfig, TheographicConfig
 from bible_mcp.db.connection import connect_db
 from bible_mcp.db.schema import ensure_schema
 from bible_mcp.index.embeddings import SentenceTransformerEmbedder, index_chunk_embeddings
@@ -23,6 +23,7 @@ from bible_mcp.services.passage_service import PassageService
 from bible_mcp.services.relation_service import RelationLookupService
 from bible_mcp.services.search_service import SearchService
 from bible_mcp.services.summarizer import summarize_passage_text
+from bible_mcp.vendor.theographic_fetcher import fetch_theographic_snapshot
 
 app = typer.Typer(help="Korean Bible MCP server")
 REQUIRED_APP_DB_TABLES = ("verses", "passage_chunks", "passage_chunks_fts")
@@ -48,6 +49,23 @@ def load_config() -> AppConfig:
         source=SourceBibleConfig(path=source_path, table=source_table),
         app_db_path=app_db_path,
         faiss_index_path=faiss_index_path,
+        theographic=load_theographic_config(),
+    )
+
+
+def load_theographic_config() -> TheographicConfig:
+    repo = os.environ.get("THEOGRAPHIC_REPO", "robertrouse/theographic-bible-metadata")
+    ref = os.environ.get("THEOGRAPHIC_REF", "master")
+    vendor_dir = Path(
+        os.environ.get("THEOGRAPHIC_VENDOR_DIR", "data/vendor/theographic")
+    )
+    link_limit = int(os.environ.get("THEOGRAPHIC_LINK_LIMIT", "20"))
+    vendor_dir.mkdir(parents=True, exist_ok=True)
+    return TheographicConfig(
+        repo=repo,
+        ref=ref,
+        vendor_dir=vendor_dir,
+        link_limit=link_limit,
     )
 
 
@@ -147,6 +165,13 @@ def index() -> None:
     vector_store = FaissChunkIndex(config.faiss_index_path)
     index_chunk_embeddings(conn, embedder, vector_store)
     typer.echo("Index build complete")
+
+
+@app.command("fetch-theographic")
+def fetch_theographic() -> None:
+    theographic_config = load_theographic_config()
+    snapshot_path = fetch_theographic_snapshot(theographic_config)
+    typer.echo(f"Theographic snapshot fetched: {snapshot_path}")
 
 
 @app.command()
