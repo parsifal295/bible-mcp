@@ -1,3 +1,4 @@
+import asyncio
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +10,7 @@ from bible_mcp.cli import app
 from bible_mcp.db.connection import connect_db
 from bible_mcp.db.schema import ensure_schema
 from bible_mcp.index.faiss_store import FaissChunkIndex
-from bible_mcp.mcp_server import build_tool_handlers
+from bible_mcp.mcp_server import build_tool_handlers, create_mcp_server
 
 
 class FakeSearchService:
@@ -81,6 +82,17 @@ def test_expand_context_handler_delegates_to_passage_service() -> None:
     result = handlers["expand_context"]({"reference": "Genesis 1:2", "window": 1})
 
     assert result["passage_text"] == "1절 문맥"
+
+
+def test_create_mcp_server_registers_expected_tools() -> None:
+    mcp = create_mcp_server(FakeSearchService(), FakePassageService(), None, None, None)
+    tools = asyncio.run(mcp.list_tools())
+
+    assert {tool.name for tool in tools} == {
+        "search_bible",
+        "lookup_passage",
+        "expand_context",
+    }
 
 
 def test_doctor_fails_when_faiss_sidecars_are_missing(tmp_path: Path, monkeypatch) -> None:
