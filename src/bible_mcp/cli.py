@@ -12,7 +12,7 @@ from bible_mcp.index.faiss_store import FaissChunkIndex
 from bible_mcp.index.fts import rebuild_fts_indexes
 from bible_mcp.ingest.chunker import build_chunks
 from bible_mcp.ingest.importer import import_verses
-from bible_mcp.ingest.metadata_importer import import_metadata_bundle, import_metadata_fixtures
+from bible_mcp.ingest.metadata_importer import import_metadata_bundle
 from bible_mcp.ingest.source_db import (
     SourceSchemaError,
     validate_source_database,
@@ -160,20 +160,48 @@ def _app_db_has_tables(config: AppConfig, tables: tuple[str, ...]) -> bool:
     return True
 
 
+def require_synced_metadata(conn: sqlite3.Connection) -> None:
+    counts = conn.execute(
+        """
+        select
+            (select count(*) from people) as people_count,
+            (select count(*) from places) as places_count,
+            (select count(*) from events) as events_count,
+            (select count(*) from entity_aliases) as aliases_count,
+            (select count(*) from entity_verse_links) as links_count
+        """
+    ).fetchone()
+    people_count, places_count, events_count, alias_count, link_count = counts
+    if (
+        people_count == 0
+        or places_count == 0
+        or events_count == 0
+        or alias_count == 0
+        or link_count == 0
+    ):
+        raise RuntimeError(
+            "Theographic metadata is missing or incomplete. Run `bible-mcp sync-theographic` before `bible-mcp index`."
+        )
+
+
 @app.command()
 def index() -> None:
-    config = load_config()
-    validate_source_database(config.source)
-    conn = connect_db(config.app_db_path)
-    ensure_schema(conn)
-    import_verses(config, conn)
-    import_metadata_fixtures(conn)
-    build_chunks(conn)
-    rebuild_fts_indexes(conn)
-    embedder = SentenceTransformerEmbedder(config.embeddings.model_name)
-    vector_store = FaissChunkIndex(config.faiss_index_path)
-    index_chunk_embeddings(conn, embedder, vector_store)
-    typer.echo("Index build complete")
+    try:
+        config = load_config()
+        validate_source_database(config.source)
+        conn = connect_db(config.app_db_path)
+        ensure_schema(conn)
+        require_synced_metadata(conn)
+        import_verses(config, conn)
+        build_chunks(conn)
+        rebuild_fts_indexes(conn)
+        embedder = SentenceTransformerEmbedder(config.embeddings.model_name)
+        vector_store = FaissChunkIndex(config.faiss_index_path)
+        index_chunk_embeddings(conn, embedder, vector_store)
+        typer.echo("Index build complete")
+    except (KeyError, SourceSchemaError, FileNotFoundError, RuntimeError, ValueError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
 
 
 @app.command("fetch-theographic")

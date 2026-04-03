@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 from typer.testing import CliRunner
 
-from bible_mcp.cli import app
+from bible_mcp.cli import app, require_synced_metadata
 from bible_mcp.db.connection import connect_db
 from bible_mcp.db.schema import ensure_schema
 from bible_mcp.index.faiss_store import FaissChunkIndex
@@ -857,7 +857,7 @@ def test_serve_reports_missing_required_environment_variable(
     assert create_server.call_count == 0
 
 
-def test_index_imports_metadata_before_chunk_and_index_rebuild(
+def test_index_requires_synced_metadata_before_chunk_and_index_rebuild(
     tmp_path: Path, monkeypatch
 ) -> None:
     config = Mock()
@@ -872,10 +872,7 @@ def test_index_imports_metadata_before_chunk_and_index_rebuild(
     monkeypatch.setattr("bible_mcp.cli.connect_db", lambda path: fake_conn)
     monkeypatch.setattr("bible_mcp.cli.ensure_schema", lambda conn: call_order.append("ensure_schema"))
     monkeypatch.setattr("bible_mcp.cli.import_verses", lambda loaded, conn: call_order.append("import_verses"))
-    monkeypatch.setattr(
-        "bible_mcp.cli.import_metadata_fixtures",
-        lambda conn: call_order.append("import_metadata_fixtures"),
-    )
+    monkeypatch.setattr("bible_mcp.cli.require_synced_metadata", lambda conn: call_order.append("require_synced_metadata"))
     monkeypatch.setattr("bible_mcp.cli.build_chunks", lambda conn: call_order.append("build_chunks"))
     monkeypatch.setattr(
         "bible_mcp.cli.rebuild_fts_indexes",
@@ -903,14 +900,78 @@ def test_index_imports_metadata_before_chunk_and_index_rebuild(
     assert call_order == [
         "validate",
         "ensure_schema",
+        "require_synced_metadata",
         "import_verses",
-        "import_metadata_fixtures",
         "build_chunks",
         "rebuild_fts_indexes",
         "embedder:test-model",
         "vector_store:chunks.faiss",
         "index_chunk_embeddings",
     ]
+
+
+def test_index_reports_useful_error_when_synced_metadata_is_missing(tmp_path: Path, monkeypatch) -> None:
+    config = Mock()
+    config.source = Mock()
+    config.app_db_path = tmp_path / "app.sqlite"
+    config.embeddings.model_name = "test-model"
+    config.faiss_index_path = tmp_path / "chunks.faiss"
+    conn = connect_db(config.app_db_path)
+    ensure_schema(conn)
+    build_chunks_mock = Mock()
+    import_verses_mock = Mock()
+
+    monkeypatch.setattr("bible_mcp.cli.load_config", lambda: config)
+    monkeypatch.setattr("bible_mcp.cli.validate_source_database", lambda loaded: None)
+    monkeypatch.setattr("bible_mcp.cli.connect_db", lambda path: conn)
+    monkeypatch.setattr("bible_mcp.cli.ensure_schema", lambda conn: None)
+    monkeypatch.setattr("bible_mcp.cli.import_verses", import_verses_mock)
+    monkeypatch.setattr("bible_mcp.cli.build_chunks", build_chunks_mock)
+    monkeypatch.setattr("bible_mcp.cli.rebuild_fts_indexes", lambda conn: None)
+    monkeypatch.setattr("bible_mcp.cli.SentenceTransformerEmbedder", Mock())
+    monkeypatch.setattr("bible_mcp.cli.FaissChunkIndex", Mock())
+    monkeypatch.setattr("bible_mcp.cli.index_chunk_embeddings", lambda conn, embedder, vector_store: None)
+
+    result = CliRunner().invoke(app, ["index"])
+
+    assert result.exit_code == 1
+    assert "sync-theographic" in result.stdout
+    assert import_verses_mock.call_count == 0
+    assert build_chunks_mock.call_count == 0
+
+
+def test_require_synced_metadata_rejects_alias_only_partial_state(tmp_path: Path) -> None:
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+    conn.execute(
+        "insert into entity_aliases(entity_type, entity_slug, alias) values (?, ?, ?)",
+        ("people", "abraham", "아브라함"),
+    )
+    conn.commit()
+
+    with pytest.raises(RuntimeError, match="sync-theographic"):
+        require_synced_metadata(conn)
+
+
+def test_require_synced_metadata_rejects_missing_places_and_events(tmp_path: Path) -> None:
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+    conn.execute(
+        "insert into people(slug, display_name, description) values (?, ?, ?)",
+        ("abraham", "아브라함", None),
+    )
+    conn.execute(
+        "insert into entity_aliases(entity_type, entity_slug, alias) values (?, ?, ?)",
+        ("people", "abraham", "아브라함"),
+    )
+    conn.execute(
+        "insert into entity_verse_links(entity_type, entity_slug, reference) values (?, ?, ?)",
+        ("people", "abraham", "Genesis 12:1"),
+    )
+    conn.commit()
+
+    with pytest.raises(RuntimeError, match="sync-theographic"):
+        require_synced_metadata(conn)
 
 
 def test_fetch_theographic_command_fetches_snapshot_and_prints_result(monkeypatch) -> None:
