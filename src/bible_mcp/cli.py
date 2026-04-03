@@ -16,6 +16,7 @@ from bible_mcp.ingest.metadata_importer import import_metadata_fixtures
 from bible_mcp.ingest.source_db import SourceSchemaError, validate_source_database
 from bible_mcp.mcp_server import create_mcp_server
 from bible_mcp.services.entity_service import EntityService
+from bible_mcp.services.entity_passage_service import EntityPassageService
 from bible_mcp.services.related_service import RelatedPassageService
 from bible_mcp.services.passage_service import PassageService
 from bible_mcp.services.relation_service import RelationLookupService
@@ -152,6 +153,7 @@ def serve() -> None:
         if _app_db_supports_optional_study_tools(config):
             related_service = RelatedPassageService(conn, embedder, vector_store)
             entity_service = EntityService(conn)
+            entity_passage_service = EntityPassageService(conn, entity_service, passage_service)
             summarizer = summarize_passage_text
             relation_service = None
             if _app_db_supports_relation_tools(config):
@@ -159,6 +161,7 @@ def serve() -> None:
         else:
             related_service = None
             entity_service = None
+            entity_passage_service = None
             summarizer = None
             relation_service = None
         create_mcp_server(
@@ -168,6 +171,7 @@ def serve() -> None:
             summarizer,
             entity_service,
             relation_service,
+            entity_passage_service,
         ).run()
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         typer.echo(str(exc))

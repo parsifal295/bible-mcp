@@ -14,6 +14,8 @@ from bible_mcp.index.faiss_store import FaissChunkIndex
 from bible_mcp.mcp_server import build_tool_handlers, create_mcp_server
 from bible_mcp.ingest.metadata_importer import import_metadata_fixtures
 from bible_mcp.services.entity_service import EntityService
+from bible_mcp.services.entity_passage_service import EntityPassageService
+from bible_mcp.services.passage_service import PassageService
 
 
 class FakeSearchService:
@@ -61,6 +63,30 @@ class FakeEntityService:
             }
         )
         return [{"display_name": "아브라함", "entity_type": "people", "slug": "abraham"}]
+
+
+class FakeEntityPassageService:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def lookup(
+        self,
+        query: str,
+        entity_type: str | None = None,
+        limit: int = 5,
+    ):
+        self.calls.append(
+            {
+                "query": query,
+                "entity_type": entity_type,
+                "limit": limit,
+            }
+        )
+        return {
+            "resolved_entity": {"display_name": "예루살렘", "entity_type": "places", "slug": "jerusalem"},
+            "matches": [],
+            "passages": [{"reference": "Psalms 122:2", "passage_text": "Our feet shall stand within thy gates, O Jerusalem."}],
+        }
 
 
 class FakeRelationService:
@@ -251,6 +277,48 @@ def test_search_entities_handler_rejects_invalid_limit() -> None:
         handlers["search_entities"]({"query": "아브라함", "limit": 0})
 
 
+def test_get_entity_passages_handler_trims_required_query_and_forwards_optional_filters() -> None:
+    entity_passage_service = FakeEntityPassageService()
+    handlers = build_tool_handlers(
+        FakeSearchService(),
+        FakePassageService(),
+        None,
+        Mock(),
+        FakeEntityService(),
+        None,
+        entity_passage_service,
+    )
+
+    result = handlers["get_entity_passages"](
+        {"query": " Jerusalem ", "entity_type": " places ", "limit": 2}
+    )
+
+    assert entity_passage_service.calls == [
+        {
+            "query": "Jerusalem",
+            "entity_type": "places",
+            "limit": 2,
+        }
+    ]
+    assert result["resolved_entity"]["slug"] == "jerusalem"
+    assert result["passages"][0]["reference"] == "Psalms 122:2"
+
+
+def test_get_entity_passages_handler_rejects_invalid_limit() -> None:
+    handlers = build_tool_handlers(
+        FakeSearchService(),
+        FakePassageService(),
+        None,
+        Mock(),
+        FakeEntityService(),
+        None,
+        FakeEntityPassageService(),
+    )
+
+    with pytest.raises(ValueError, match="limit must be at least 1"):
+        handlers["get_entity_passages"]({"query": "Jerusalem", "limit": 0})
+
+
 def test_search_entities_handler_returns_place_results_with_real_entity_service(tmp_path: Path) -> None:
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
@@ -280,6 +348,65 @@ def test_search_entities_handler_returns_place_results_with_real_entity_service(
                 "matched_by": "alias",
             }
         ]
+    }
+
+
+def test_get_entity_passages_handler_returns_place_and_event_passages_with_real_service(
+    tmp_path: Path,
+) -> None:
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+    _seed_default_bundle_verses(conn)
+    import_metadata_fixtures(conn)
+
+    handlers = build_tool_handlers(
+        FakeSearchService(),
+        FakePassageService(),
+        None,
+        None,
+        EntityService(conn),
+        None,
+        EntityPassageService(conn, EntityService(conn), PassageService(conn)),
+    )
+
+    place_result = handlers["get_entity_passages"](
+        {"query": "Jerusalem", "entity_type": "places", "limit": 1}
+    )
+    event_result = handlers["get_entity_passages"](
+        {"query": "Resurrection", "entity_type": "events", "limit": 1}
+    )
+
+    assert place_result == {
+        "resolved_entity": {
+            "entity_type": "places",
+            "slug": "jerusalem",
+            "display_name": "예루살렘",
+            "description": None,
+            "matched_by": "alias",
+        },
+        "matches": [],
+        "passages": [
+            {
+                "reference": "Psalms 122:2",
+                "passage_text": "Our feet shall stand within thy gates, O Jerusalem.",
+            }
+        ],
+    }
+    assert event_result == {
+        "resolved_entity": {
+            "entity_type": "events",
+            "slug": "resurrection",
+            "display_name": "부활",
+            "description": "예수의 부활 사건",
+            "matched_by": "alias",
+        },
+        "matches": [],
+        "passages": [
+            {
+                "reference": "Matthew 28:6",
+                "passage_text": "He is not here: for he is risen, as he said.",
+            }
+        ],
     }
 
 
@@ -340,6 +467,35 @@ def test_create_mcp_server_registers_expected_tools() -> None:
         "search_bible",
         "lookup_passage",
         "expand_context",
+    }
+
+
+def test_create_mcp_server_registers_entity_passages_when_service_is_present() -> None:
+    class FakeEntityPassageService:
+        def lookup(
+            self,
+            query: str,
+            entity_type: str | None = None,
+            limit: int = 5,
+        ):
+            return {"resolved_entity": None, "matches": [], "passages": []}
+
+    mcp = create_mcp_server(
+        FakeSearchService(),
+        FakePassageService(),
+        None,
+        None,
+        None,
+        None,
+        FakeEntityPassageService(),
+    )
+    tools = asyncio.run(mcp.list_tools())
+
+    assert {tool.name for tool in tools} == {
+        "search_bible",
+        "lookup_passage",
+        "expand_context",
+        "get_entity_passages",
     }
 
 

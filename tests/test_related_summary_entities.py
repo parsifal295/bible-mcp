@@ -10,6 +10,7 @@ from bible_mcp.mcp_server import build_tool_handlers
 from bible_mcp.mcp_server import create_mcp_server
 from bible_mcp.services.related_service import RelatedPassageService
 from bible_mcp.services.entity_service import EntityService
+from bible_mcp.services.entity_passage_service import EntityPassageService
 from bible_mcp.services.relation_service import RelationLookupService
 from bible_mcp.services.summarizer import summarize_passage_text
 
@@ -105,11 +106,13 @@ def test_serve_omits_optional_tools_when_entity_tables_are_missing(
         summarizer,
         entity_service,
         relation_service,
+        entity_passage_service,
     ):
         captured["related_service"] = related_service
         captured["summarizer"] = summarizer
         captured["entity_service"] = entity_service
         captured["relation_service"] = relation_service
+        captured["entity_passage_service"] = entity_passage_service
 
         class FakeServer:
             def run(self):
@@ -129,6 +132,7 @@ def test_serve_omits_optional_tools_when_entity_tables_are_missing(
     assert captured["summarizer"] is None
     assert captured["entity_service"] is None
     assert captured["relation_service"] is None
+    assert captured["entity_passage_service"] is None
 
 
 def test_serve_wires_relation_lookup_service_when_optional_tables_are_present(
@@ -164,11 +168,13 @@ def test_serve_wires_relation_lookup_service_when_optional_tables_are_present(
         summarizer,
         entity_service,
         relation_service,
+        entity_passage_service,
     ):
         captured["related_service"] = related_service
         captured["summarizer"] = summarizer
         captured["entity_service"] = entity_service
         captured["relation_service"] = relation_service
+        captured["entity_passage_service"] = entity_passage_service
 
         class FakeServer:
             def run(self):
@@ -188,6 +194,7 @@ def test_serve_wires_relation_lookup_service_when_optional_tables_are_present(
     assert captured["summarizer"] is summarize_passage_text
     assert isinstance(captured["entity_service"], EntityService)
     assert isinstance(captured["relation_service"], RelationLookupService)
+    assert isinstance(captured["entity_passage_service"], EntityPassageService)
 
 
 def test_create_mcp_server_registers_optional_tools_when_collaborators_are_present() -> None:
@@ -210,6 +217,15 @@ def test_create_mcp_server_registers_optional_tools_when_collaborators_are_prese
         def search(self, query: str, entity_type: str | None = None, limit: int = 5):
             return [{"display_name": "아브라함"}]
 
+    class FakeEntityPassageService:
+        def lookup(
+            self,
+            query: str,
+            entity_type: str | None = None,
+            limit: int = 5,
+        ):
+            return {"resolved_entity": None, "matches": [], "passages": []}
+
     class FakeRelationService:
         def lookup(
             self,
@@ -228,6 +244,7 @@ def test_create_mcp_server_registers_optional_tools_when_collaborators_are_prese
         summarize_passage_text,
         FakeEntityService(),
         FakeRelationService(),
+        FakeEntityPassageService(),
     )
     tools = asyncio.run(mcp.list_tools())
 
@@ -239,6 +256,7 @@ def test_create_mcp_server_registers_optional_tools_when_collaborators_are_prese
         "summarize_passage",
         "search_entities",
         "get_entity_relations",
+        "get_entity_passages",
     }
 
 
@@ -258,6 +276,15 @@ def test_create_mcp_server_registers_entity_search_without_relation_lookup() -> 
         def search(self, query: str, entity_type: str | None = None, limit: int = 5):
             return [{"display_name": "아브라함"}]
 
+    class FakeEntityPassageService:
+        def lookup(
+            self,
+            query: str,
+            entity_type: str | None = None,
+            limit: int = 5,
+        ):
+            return {"resolved_entity": None, "matches": [], "passages": []}
+
     mcp = create_mcp_server(
         FakeSearchService(),
         FakePassageService(),
@@ -265,6 +292,7 @@ def test_create_mcp_server_registers_entity_search_without_relation_lookup() -> 
         None,
         FakeEntityService(),
         None,
+        FakeEntityPassageService(),
     )
     tools = asyncio.run(mcp.list_tools())
 
@@ -273,6 +301,7 @@ def test_create_mcp_server_registers_entity_search_without_relation_lookup() -> 
         "lookup_passage",
         "expand_context",
         "search_entities",
+        "get_entity_passages",
     }
 
 

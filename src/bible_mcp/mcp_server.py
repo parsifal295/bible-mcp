@@ -55,6 +55,7 @@ def build_tool_handlers(
     summarizer,
     entity_service,
     relation_service=None,
+    entity_passage_service=None,
 ):
     def search_bible(payload: dict):
         query = _require_text(payload["query"], "query")
@@ -104,6 +105,16 @@ def build_tool_handlers(
             limit=limit,
         )
 
+    def get_entity_passages(payload: dict):
+        query = _require_text(payload["query"], "query")
+        entity_type = _optional_text(payload.get("entity_type"))
+        limit = _require_limit(payload.get("limit", 5))
+        return entity_passage_service.lookup(
+            query,
+            entity_type=entity_type,
+            limit=limit,
+        )
+
     handlers = {
         "search_bible": search_bible,
         "lookup_passage": lookup_passage,
@@ -122,6 +133,9 @@ def build_tool_handlers(
     if relation_service is not None:
         handlers["get_entity_relations"] = get_entity_relations
 
+    if entity_passage_service is not None:
+        handlers["get_entity_passages"] = get_entity_passages
+
     return handlers
 
 
@@ -132,6 +146,7 @@ def create_mcp_server(
     summarizer,
     entity_service,
     relation_service=None,
+    entity_passage_service=None,
 ):
     mcp = FastMCP("bible-mcp")
     handlers = build_tool_handlers(
@@ -141,6 +156,7 @@ def create_mcp_server(
         summarizer,
         entity_service,
         relation_service,
+        entity_passage_service,
     )
 
     @mcp.tool()
@@ -199,6 +215,22 @@ def create_mcp_server(
                     "relation_type": relation_type,
                     "entity_type": entity_type,
                     "direction": direction,
+                    "limit": limit,
+                }
+            )
+
+    if "get_entity_passages" in handlers:
+
+        @mcp.tool()
+        def get_entity_passages(
+            query: str,
+            entity_type: str | None = None,
+            limit: int = 5,
+        ):
+            return handlers["get_entity_passages"](
+                {
+                    "query": query,
+                    "entity_type": entity_type,
                     "limit": limit,
                 }
             )
