@@ -1,9 +1,9 @@
 from pathlib import Path
 import sqlite3
 
-from bible_mcp.db.schema import ensure_schema
-from bible_mcp.index.embeddings import index_chunk_embeddings
 from bible_mcp.index.faiss_store import FaissChunkIndex
+from bible_mcp.index.embeddings import index_chunk_embeddings
+from bible_mcp.db.schema import ensure_schema
 
 
 class FakeEmbedder:
