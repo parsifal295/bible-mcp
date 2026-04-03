@@ -11,12 +11,20 @@ class SourceSchemaError(RuntimeError):
 REQUIRED_COLUMNS = {"book", "chapter", "verse", "text"}
 
 
+def _quote_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
 def _table_columns(db_path: Path, table: str) -> list[str]:
-    conn = sqlite3.connect(db_path)
+    conn = None
     try:
-        rows = conn.execute(f"pragma table_info({table})").fetchall()
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(f"pragma table_info({_quote_identifier(table)})").fetchall()
+    except sqlite3.Error as exc:
+        raise SourceSchemaError(f"Failed to inspect source database: {db_path}") from exc
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
     return [row[1] for row in rows]
 
 
