@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from itertools import groupby
 import sqlite3
 
 
@@ -38,51 +39,53 @@ def build_chunks(
     with conn:
         conn.execute("delete from passage_chunks")
 
-        for start in range(0, len(rows), stride):
-            window = rows[start : start + max_verses]
-            if not window:
-                continue
+        for _, book_rows_iter in groupby(rows, key=lambda row: row["book"]):
+            book_rows = list(book_rows_iter)
 
-            if len({row["book"] for row in window}) > 1:
-                continue
+            for start in range(0, len(book_rows), stride):
+                window = book_rows[start : start + max_verses]
+                if not window:
+                    continue
 
-            first = window[0]
-            last = window[-1]
-            chunk = PassageChunk(
-                chunk_id=f"{first['reference']}-{last['reference']}",
-                start_ref=first["reference"],
-                end_ref=last["reference"],
-                book=first["book"],
-                chapter_range=_chapter_range(int(first["chapter"]), int(last["chapter"])),
-                text=" ".join(row["text"] for row in window),
-                token_count=sum(len(row["text"].split()) for row in window),
-                chunk_strategy="verse_window",
-            )
-            conn.execute(
-                """
-                insert into passage_chunks(
-                    chunk_id,
-                    start_ref,
-                    end_ref,
-                    book,
-                    chapter_range,
-                    text,
-                    token_count,
-                    chunk_strategy
+                first = window[0]
+                last = window[-1]
+                chunk = PassageChunk(
+                    chunk_id=f"{first['reference']}-{last['reference']}",
+                    start_ref=first["reference"],
+                    end_ref=last["reference"],
+                    book=first["book"],
+                    chapter_range=_chapter_range(
+                        int(first["chapter"]), int(last["chapter"])
+                    ),
+                    text=" ".join(row["text"] for row in window),
+                    token_count=sum(len(row["text"].split()) for row in window),
+                    chunk_strategy="verse_window",
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    chunk.chunk_id,
-                    chunk.start_ref,
-                    chunk.end_ref,
-                    chunk.book,
-                    chunk.chapter_range,
-                    chunk.text,
-                    chunk.token_count,
-                    chunk.chunk_strategy,
-                ),
-            )
-            chunks.append(chunk)
+                conn.execute(
+                    """
+                    insert into passage_chunks(
+                        chunk_id,
+                        start_ref,
+                        end_ref,
+                        book,
+                        chapter_range,
+                        text,
+                        token_count,
+                        chunk_strategy
+                    )
+                    values (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        chunk.chunk_id,
+                        chunk.start_ref,
+                        chunk.end_ref,
+                        chunk.book,
+                        chunk.chapter_range,
+                        chunk.text,
+                        chunk.token_count,
+                        chunk.chunk_strategy,
+                    ),
+                )
+                chunks.append(chunk)
 
     return chunks

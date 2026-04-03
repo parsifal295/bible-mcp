@@ -45,6 +45,43 @@ def test_build_chunks_groups_adjacent_verses(tmp_path: Path) -> None:
     assert chunks[0].end_ref == "Genesis 1:3"
 
 
+def test_build_chunks_keeps_trailing_verses_at_book_boundary(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.sqlite"
+    app_path = tmp_path / "app.sqlite"
+
+    source = sqlite3.connect(source_path)
+    source.execute(
+        "create table verses (book text, chapter integer, verse integer, text text, translation text)"
+    )
+    source.executemany(
+        "insert into verses values (?, ?, ?, ?, ?)",
+        [
+            ("Genesis", 1, 1, "태초에 하나님이 천지를 창조하시니라", "KOR"),
+            ("Genesis", 1, 2, "땅이 혼돈하고 공허하며", "KOR"),
+            ("Exodus", 1, 1, "야곱과 함께 각기 가족을 데리고 이집트에 왔으니", "KOR"),
+            ("Exodus", 1, 2, "르우벤과 시므온과 레위와 유다", "KOR"),
+        ],
+    )
+    source.commit()
+    source.close()
+
+    config = AppConfig(
+        source=SourceBibleConfig(path=source_path, table="verses"),
+        app_db_path=app_path,
+        faiss_index_path=tmp_path / "index.faiss",
+    )
+
+    conn = connect_db(app_path)
+    ensure_schema(conn)
+    import_verses(config, conn)
+
+    chunks = build_chunks(conn, max_verses=3, stride=2)
+    chunk_refs = {(chunk.start_ref, chunk.end_ref) for chunk in chunks}
+
+    assert ("Genesis 1:1", "Genesis 1:2") in chunk_refs
+    assert ("Exodus 1:1", "Exodus 1:2") in chunk_refs
+
+
 def test_search_keyword_returns_matching_reference(tmp_path: Path) -> None:
     source_path = tmp_path / "source.sqlite"
     app_path = tmp_path / "app.sqlite"
