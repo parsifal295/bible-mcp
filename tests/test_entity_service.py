@@ -14,6 +14,41 @@ def _build_service(tmp_path):
     return conn, EntityService(conn)
 
 
+def _create_partial_entity_schema_with_aliases(conn) -> None:
+    conn.executescript(
+        """
+        create table people (
+            id integer primary key,
+            slug text not null unique,
+            display_name text not null,
+            description text
+        );
+
+        create table entity_aliases (
+            id integer primary key,
+            entity_type text not null,
+            entity_slug text not null,
+            alias text not null
+        );
+        """
+    )
+    conn.commit()
+
+
+def _create_partial_entity_schema_without_aliases(conn) -> None:
+    conn.executescript(
+        """
+        create table people (
+            id integer primary key,
+            slug text not null unique,
+            display_name text not null,
+            description text
+        );
+        """
+    )
+    conn.commit()
+
+
 def _seed_default_bundle_verses(conn) -> None:
     conn.executemany(
         """
@@ -138,6 +173,51 @@ def test_search_returns_empty_list_for_unsupported_entity_types(tmp_path) -> Non
     import_metadata_fixtures(conn)
 
     assert service.search("Jerusalem", entity_type="angels", limit=5) == []
+
+
+def test_search_handles_partial_schema_without_places_or_events_tables(tmp_path) -> None:
+    conn = connect_db(tmp_path / "app.sqlite")
+    _create_partial_entity_schema_with_aliases(conn)
+    service = EntityService(conn)
+    conn.execute(
+        "insert into people(slug, display_name, description) values (?, ?, ?)",
+        ("saul", "Saul", "display match"),
+    )
+    conn.commit()
+
+    assert service.search("Saul", limit=5) == [
+        {
+            "entity_type": "people",
+            "slug": "saul",
+            "display_name": "Saul",
+            "description": "display match",
+            "matched_by": "display_name",
+        }
+    ]
+    assert service.search("Jerusalem", entity_type="places", limit=5) == []
+    assert service.search("Resurrection", entity_type="events", limit=5) == []
+
+
+def test_search_skips_alias_matching_when_entity_aliases_table_is_missing(tmp_path) -> None:
+    conn = connect_db(tmp_path / "app.sqlite")
+    _create_partial_entity_schema_without_aliases(conn)
+    service = EntityService(conn)
+    conn.execute(
+        "insert into people(slug, display_name, description) values (?, ?, ?)",
+        ("abraham", "Abraham", "patriarch"),
+    )
+    conn.commit()
+
+    assert service.search("Abraham", limit=5) == [
+        {
+            "entity_type": "people",
+            "slug": "abraham",
+            "display_name": "Abraham",
+            "description": "patriarch",
+            "matched_by": "display_name",
+        }
+    ]
+    assert service.search("Father of many", limit=5) == []
 
 
 def test_search_keeps_highest_priority_match_for_same_entity(tmp_path) -> None:

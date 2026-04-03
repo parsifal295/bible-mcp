@@ -14,6 +14,16 @@ _MATCH_ORDER = ("display_name", "alias", "slug")
 class EntityService:
     def __init__(self, conn) -> None:
         self.conn = conn
+        self._available_tables = self._load_available_tables()
+
+    def _load_available_tables(self) -> set[str]:
+        rows = self.conn.execute(
+            "select name from sqlite_master where type = 'table'"
+        ).fetchall()
+        return {row["name"] for row in rows}
+
+    def _has_table(self, table_name: str) -> bool:
+        return table_name in self._available_tables
 
     def _entity_types_for_search(self, entity_type: str | None) -> tuple[str, ...]:
         if entity_type is None:
@@ -67,7 +77,12 @@ class EntityService:
         candidates: dict[tuple[str, str], dict] = {}
 
         for current_entity_type in entity_types:
+            config = _ENTITY_SEARCH_TYPES[current_entity_type]
+            if not self._has_table(config["table"]):
+                continue
             for matched_by in _MATCH_ORDER:
+                if matched_by == "alias" and not self._has_table("entity_aliases"):
+                    continue
                 sql = self._match_sql(current_entity_type, matched_by)
                 for row in self.conn.execute(sql, (query,)).fetchall():
                     candidate = {
