@@ -1,4 +1,5 @@
 import os
+import sqlite3
 from pathlib import Path
 
 import typer
@@ -17,6 +18,7 @@ from bible_mcp.services.passage_service import PassageService
 from bible_mcp.services.search_service import SearchService
 
 app = typer.Typer(help="Korean Bible MCP server")
+REQUIRED_APP_DB_TABLES = ("verses", "passage_chunks", "passage_chunks_fts")
 
 
 def load_config() -> AppConfig:
@@ -31,6 +33,42 @@ def load_config() -> AppConfig:
         app_db_path=app_db_path,
         faiss_index_path=faiss_index_path,
     )
+
+
+def validate_runtime_installation(config: AppConfig) -> FaissChunkIndex:
+    if not config.app_db_path.exists():
+        raise FileNotFoundError(f"App DB not found: {config.app_db_path}")
+
+    try:
+        conn = sqlite3.connect(f"file:{config.app_db_path}?mode=ro", uri=True)
+        try:
+            missing_tables = [
+                table
+                for table in REQUIRED_APP_DB_TABLES
+                if conn.execute(
+                    "select 1 from sqlite_master where type = 'table' and name = ?",
+                    (table,),
+                ).fetchone()
+                is None
+            ]
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        raise RuntimeError(f"App DB is not usable: {config.app_db_path}") from exc
+
+    if missing_tables:
+        raise RuntimeError(
+            "App DB is missing required tables: " + ", ".join(missing_tables)
+        )
+
+    vector_store = FaissChunkIndex(config.faiss_index_path)
+    try:
+        vector_store.load()
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"FAISS artifacts are missing or incomplete: {config.faiss_index_path}"
+        ) from exc
+    return vector_store
 
 
 @app.command()
@@ -50,13 +88,17 @@ def index() -> None:
 
 @app.command()
 def serve() -> None:
-    config = load_config()
-    conn = connect_db(config.app_db_path)
-    embedder = SentenceTransformerEmbedder(config.embeddings.model_name)
-    vector_store = FaissChunkIndex(config.faiss_index_path)
-    search_service = SearchService(conn, embedder, vector_store)
-    passage_service = PassageService(conn)
-    create_mcp_server(search_service, passage_service, None, None, None).run()
+    try:
+        config = load_config()
+        vector_store = validate_runtime_installation(config)
+        conn = connect_db(config.app_db_path)
+        embedder = SentenceTransformerEmbedder(config.embeddings.model_name)
+        search_service = SearchService(conn, embedder, vector_store)
+        passage_service = PassageService(conn)
+        create_mcp_server(search_service, passage_service, None, None, None).run()
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -64,12 +106,9 @@ def doctor() -> None:
     try:
         config = load_config()
         validate_source_database(config.source)
-        if not config.app_db_path.exists():
-            raise FileNotFoundError(f"App DB not found: {config.app_db_path}")
-        if not config.faiss_index_path.exists():
-            raise FileNotFoundError(f"FAISS index not found: {config.faiss_index_path}")
+        validate_runtime_installation(config)
         typer.echo("Doctor check passed")
-    except (KeyError, SourceSchemaError, FileNotFoundError) as exc:
+    except (KeyError, SourceSchemaError, FileNotFoundError, RuntimeError, ValueError) as exc:
         typer.echo(str(exc))
         raise typer.Exit(code=1)
 
