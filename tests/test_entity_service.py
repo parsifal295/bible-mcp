@@ -14,6 +14,34 @@ def _build_service(tmp_path):
     return conn, EntityService(conn)
 
 
+def _seed_default_bundle_verses(conn) -> None:
+    conn.executemany(
+        """
+        insert into verses(translation, book, book_order, chapter, verse, reference, testament, text)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            ("KRV", "Genesis", 1, 12, 1, "Genesis 12:1", "OT", "Now the LORD had said unto Abram."),
+            ("KRV", "Genesis", 1, 21, 3, "Genesis 21:3", "OT", "And Abraham called his son's name that was born unto him, whom Sarah bare to him, Isaac."),
+            ("KRV", "Genesis", 1, 25, 26, "Genesis 25:26", "OT", "And after that came his brother out, and his hand took hold on Esau's heel; and his name was called Jacob."),
+            ("KRV", "1 Samuel", 9, 16, 1, "1 Samuel 16:1", "OT", "And the LORD said unto Samuel, How long wilt thou mourn for Saul, seeing I have rejected him?"),
+            ("KRV", "1 Samuel", 9, 16, 13, "1 Samuel 16:13", "OT", "Then Samuel took the horn of oil, and anointed him in the midst of his brethren."),
+            ("KRV", "Matthew", 40, 1, 21, "Matthew 1:21", "NT", "And she shall bring forth a son, and thou shalt call his name JESUS."),
+            ("KRV", "Matthew", 40, 4, 18, "Matthew 4:18", "NT", "Jesus, walking by the sea of Galilee, saw two brethren, Simon called Peter."),
+            ("KRV", "Matthew", 40, 4, 21, "Matthew 4:21", "NT", "And going on from thence, he saw other two brethren, James the son of Zebedee, and John his brother."),
+            ("KRV", "Psalms", 19, 122, 2, "Psalms 122:2", "OT", "Our feet shall stand within thy gates, O Jerusalem."),
+            ("KRV", "Micah", 33, 5, 2, "Micah 5:2", "OT", "But thou, Bethlehem Ephratah, though thou be little among the thousands of Judah."),
+            ("KRV", "Matthew", 40, 2, 23, "Matthew 2:23", "NT", "And he came and dwelt in a city called Nazareth."),
+            ("KRV", "Matthew", 40, 4, 15, "Matthew 4:15", "NT", "The land of Zebulun, and the land of Naphtali, by the way of the sea, beyond Jordan, Galilee of the Gentiles."),
+            ("KRV", "Matthew", 40, 3, 13, "Matthew 3:13", "NT", "Then cometh Jesus from Galilee to Jordan unto John, to be baptized of him."),
+            ("KRV", "Exodus", 2, 12, 41, "Exodus 12:41", "OT", "And it came to pass at the end of the four hundred and thirty years."),
+            ("KRV", "Matthew", 40, 27, 35, "Matthew 27:35", "NT", "And they crucified him, and parted his garments."),
+            ("KRV", "Matthew", 40, 28, 6, "Matthew 28:6", "NT", "He is not here: for he is risen, as he said."),
+        ],
+    )
+    conn.commit()
+
+
 def test_search_orders_display_name_alias_and_slug_matches_deterministically(tmp_path) -> None:
     conn, service = _build_service(tmp_path)
     conn.execute(
@@ -106,6 +134,7 @@ def test_search_respects_entity_type_filter_and_limit(tmp_path) -> None:
 
 def test_search_returns_empty_list_for_unsupported_entity_types(tmp_path) -> None:
     conn, service = _build_service(tmp_path)
+    _seed_default_bundle_verses(conn)
     import_metadata_fixtures(conn)
 
     assert service.search("Jerusalem", entity_type="angels", limit=5) == []
@@ -159,6 +188,7 @@ def test_search_resolves_english_aliases_from_default_fixture_bundle(
     description: str,
 ) -> None:
     conn, service = _build_service(tmp_path)
+    _seed_default_bundle_verses(conn)
     import_metadata_fixtures(conn)
 
     assert service.search(query, entity_type="people", limit=1) == [
@@ -174,6 +204,7 @@ def test_search_resolves_english_aliases_from_default_fixture_bundle(
 
 def test_search_keeps_default_scope_people_only_with_bundled_place_aliases(tmp_path) -> None:
     conn, service = _build_service(tmp_path)
+    _seed_default_bundle_verses(conn)
     import_metadata_fixtures(conn)
 
     assert service.search("Jerusalem", limit=5) == []
@@ -181,6 +212,7 @@ def test_search_keeps_default_scope_people_only_with_bundled_place_aliases(tmp_p
 
 def test_search_resolves_bundled_place_and_event_aliases(tmp_path) -> None:
     conn, service = _build_service(tmp_path)
+    _seed_default_bundle_verses(conn)
     import_metadata_fixtures(conn)
 
     assert service.search("Jerusalem", entity_type="places", limit=5) == [

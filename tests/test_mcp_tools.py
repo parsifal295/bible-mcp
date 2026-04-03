@@ -147,6 +147,34 @@ def _write_app_db_with_chunk_ids(path: Path, chunk_ids: list[str]) -> None:
     conn.close()
 
 
+def _seed_default_bundle_verses(conn) -> None:
+    conn.executemany(
+        """
+        insert into verses(translation, book, book_order, chapter, verse, reference, testament, text)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            ("KRV", "Genesis", 1, 12, 1, "Genesis 12:1", "OT", "Now the LORD had said unto Abram."),
+            ("KRV", "Genesis", 1, 21, 3, "Genesis 21:3", "OT", "And Abraham called his son's name that was born unto him, whom Sarah bare to him, Isaac."),
+            ("KRV", "Genesis", 1, 25, 26, "Genesis 25:26", "OT", "And after that came his brother out, and his hand took hold on Esau's heel; and his name was called Jacob."),
+            ("KRV", "1 Samuel", 9, 16, 1, "1 Samuel 16:1", "OT", "And the LORD said unto Samuel, How long wilt thou mourn for Saul, seeing I have rejected him?"),
+            ("KRV", "1 Samuel", 9, 16, 13, "1 Samuel 16:13", "OT", "Then Samuel took the horn of oil, and anointed him in the midst of his brethren."),
+            ("KRV", "Matthew", 40, 1, 21, "Matthew 1:21", "NT", "And she shall bring forth a son, and thou shalt call his name JESUS."),
+            ("KRV", "Matthew", 40, 4, 18, "Matthew 4:18", "NT", "Jesus, walking by the sea of Galilee, saw two brethren, Simon called Peter."),
+            ("KRV", "Matthew", 40, 4, 21, "Matthew 4:21", "NT", "And going on from thence, he saw other two brethren, James the son of Zebedee, and John his brother."),
+            ("KRV", "Psalms", 19, 122, 2, "Psalms 122:2", "OT", "Our feet shall stand within thy gates, O Jerusalem."),
+            ("KRV", "Micah", 33, 5, 2, "Micah 5:2", "OT", "But thou, Bethlehem Ephratah, though thou be little among the thousands of Judah."),
+            ("KRV", "Matthew", 40, 2, 23, "Matthew 2:23", "NT", "And he came and dwelt in a city called Nazareth."),
+            ("KRV", "Matthew", 40, 4, 15, "Matthew 4:15", "NT", "The land of Zebulun, and the land of Naphtali, by the way of the sea, beyond Jordan, Galilee of the Gentiles."),
+            ("KRV", "Matthew", 40, 3, 13, "Matthew 3:13", "NT", "Then cometh Jesus from Galilee to Jordan unto John, to be baptized of him."),
+            ("KRV", "Exodus", 2, 12, 41, "Exodus 12:41", "OT", "And it came to pass at the end of the four hundred and thirty years."),
+            ("KRV", "Matthew", 40, 27, 35, "Matthew 27:35", "NT", "And they crucified him, and parted his garments."),
+            ("KRV", "Matthew", 40, 28, 6, "Matthew 28:6", "NT", "He is not here: for he is risen, as he said."),
+        ],
+    )
+    conn.commit()
+
+
 def test_search_bible_handler_returns_serializable_payload() -> None:
     handlers = build_tool_handlers(FakeSearchService(), FakePassageService(), None, None, None)
     result = handlers["search_bible"]({"query": "창조", "limit": 3})
@@ -226,6 +254,7 @@ def test_search_entities_handler_rejects_invalid_limit() -> None:
 def test_search_entities_handler_returns_place_results_with_real_entity_service(tmp_path: Path) -> None:
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
+    _seed_default_bundle_verses(conn)
     import_metadata_fixtures(conn)
 
     handlers = build_tool_handlers(
