@@ -1,0 +1,50 @@
+{
+  "people": {
+    "abraham_58": {
+      "canonical_slug": "abraham",
+      "display_name": "아브라함",
+      "description": "이스라엘 민족의 조상으로 부름받은 믿음의 선조.",
+      "aliases": ["Abraham", "아브람"]
+    },
+    "isaac_616": {
+      "canonical_slug": "isaac",
+      "display_name": "이삭",
+      "description": "아브라함과 사라의 아들로 약속의 계보를 잇는 인물.",
+      "aliases": ["Isaac"]
+    },
+    "jacob_683": {
+      "canonical_slug": "jacob",
+      "display_name": "야곱",
+      "description": "이스라엘이라는 이름을 받은 족장.",
+      "aliases": ["Jacob", "이스라엘"]
+    },
+    "jesus_904": {
+      "canonical_slug": "jesus",
+      "display_name": "예수",
+      "description": "신약의 중심 인물로 복음을 선포한 메시아.",
+      "aliases": ["Jesus", "예수 그리스도"]
+    }
+  },
+  "places": {
+    "bethlehem_218": {
+      "canonical_slug": "bethlehem",
+      "display_name": "베들레헴",
+      "aliases": ["Bethlehem"]
+    },
+    "jerusalem_636": {
+      "canonical_slug": "jerusalem",
+      "display_name": "예루살렘",
+      "aliases": ["Jerusalem", "예루살렘 성"]
+    },
+    "nazareth_878": {
+      "canonical_slug": "nazareth",
+      "display_name": "나사렛",
+      "aliases": ["Nazareth"]
+    },
+    "galilee_433": {
+      "canonical_slug": "galilee",
+      "display_name": "갈릴리",
+      "aliases": ["Galilee", "갈릴래아"]
+    }
+  }
+}
