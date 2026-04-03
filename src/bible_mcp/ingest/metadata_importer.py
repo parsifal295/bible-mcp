@@ -75,57 +75,75 @@ def import_metadata_fixtures(
     conn: sqlite3.Connection,
     fixtures_dir: Path = DEFAULT_FIXTURE_DIR,
 ) -> None:
+    """Import repo-managed metadata fixtures into an existing schema.
+
+    The caller is responsible for ensuring the metadata tables already exist.
+    This function manages an import-local savepoint so failures roll back only
+    the metadata import without committing or disturbing any caller-owned outer
+    transaction.
+    """
     bundle = load_metadata_fixtures(fixtures_dir)
     _validate_bundle(bundle)
 
-    _delete_metadata_rows(conn)
+    conn.execute("savepoint metadata_import")
+    try:
+        _delete_metadata_rows(conn)
 
-    conn.executemany(
-        "insert into people(slug, display_name, description) values (?, ?, ?)",
-        ((row.slug, row.display_name, row.description) for row in bundle.people),
-    )
-    conn.executemany(
-        "insert into places(slug, display_name, latitude, longitude) values (?, ?, ?, ?)",
-        ((row.slug, row.display_name, row.latitude, row.longitude) for row in bundle.places),
-    )
-    conn.executemany(
-        "insert into events(slug, display_name, description) values (?, ?, ?)",
-        ((row.slug, row.display_name, row.description) for row in bundle.events),
-    )
-    conn.executemany(
-        "insert into entity_aliases(entity_type, entity_slug, alias) values (?, ?, ?)",
-        ((row.entity_type, row.entity_slug, row.alias) for row in bundle.aliases),
-    )
-    conn.executemany(
-        "insert into entity_verse_links(entity_type, entity_slug, reference) values (?, ?, ?)",
-        (
-            (row.entity_type, row.entity_slug, row.reference)
-            for row in bundle.entity_verse_links
-        ),
-    )
-    conn.executemany(
-        """
-        insert into entity_relationships(
-            source_type,
-            source_slug,
-            relation_type,
-            target_type,
-            target_slug,
-            is_primary,
-            note
+        conn.executemany(
+            "insert into people(slug, display_name, description) values (?, ?, ?)",
+            ((row.slug, row.display_name, row.description) for row in bundle.people),
         )
-        values (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
+        conn.executemany(
+            "insert into places(slug, display_name, latitude, longitude) values (?, ?, ?, ?)",
             (
-                row.source_type,
-                row.source_slug,
-                row.relation_type,
-                row.target_type,
-                row.target_slug,
-                int(row.is_primary),
-                row.note,
+                (row.slug, row.display_name, row.latitude, row.longitude)
+                for row in bundle.places
+            ),
+        )
+        conn.executemany(
+            "insert into events(slug, display_name, description) values (?, ?, ?)",
+            ((row.slug, row.display_name, row.description) for row in bundle.events),
+        )
+        conn.executemany(
+            "insert into entity_aliases(entity_type, entity_slug, alias) values (?, ?, ?)",
+            ((row.entity_type, row.entity_slug, row.alias) for row in bundle.aliases),
+        )
+        conn.executemany(
+            "insert into entity_verse_links(entity_type, entity_slug, reference) values (?, ?, ?)",
+            (
+                (row.entity_type, row.entity_slug, row.reference)
+                for row in bundle.entity_verse_links
+            ),
+        )
+        conn.executemany(
+            """
+            insert into entity_relationships(
+                source_type,
+                source_slug,
+                relation_type,
+                target_type,
+                target_slug,
+                is_primary,
+                note
             )
-            for row in bundle.relationships
-        ),
-    )
+            values (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                (
+                    row.source_type,
+                    row.source_slug,
+                    row.relation_type,
+                    row.target_type,
+                    row.target_slug,
+                    int(row.is_primary),
+                    row.note,
+                )
+                for row in bundle.relationships
+            ),
+        )
+    except Exception:
+        conn.execute("rollback to metadata_import")
+        conn.execute("release metadata_import")
+        raise
+    else:
+        conn.execute("release metadata_import")

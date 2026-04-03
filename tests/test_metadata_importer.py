@@ -260,6 +260,31 @@ def test_import_metadata_fixtures_rejects_duplicate_metadata_rows(
     assert conn.execute(count_query).fetchone()[0] == 0
 
 
+def test_import_metadata_fixtures_rolls_back_partial_changes_on_failure_without_manual_rollback(
+    tmp_path: Path,
+) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    _write_minimal_metadata_bundle(fixtures)
+    _write_fixture(
+        fixtures,
+        "aliases.json",
+        [
+            {"entity_type": "people", "entity_slug": "abraham", "alias": "Abram"},
+            {"entity_type": "people", "entity_slug": "abraham", "alias": "Abram"},
+        ],
+    )
+
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        import_metadata_fixtures(conn, fixtures_dir=fixtures)
+
+    assert conn.execute("select count(*) from people").fetchone()[0] == 0
+    assert conn.execute("select count(*) from entity_aliases").fetchone()[0] == 0
+
+
 def test_import_metadata_fixtures_rejects_missing_alias_entity(tmp_path: Path) -> None:
     fixtures = tmp_path / "fixtures"
     fixtures.mkdir()
