@@ -10,16 +10,34 @@ from bible_mcp.services.search_service import SearchService
 
 class FakeEmbedder:
     def embed(self, texts):
-        return [[1.0, 0.0] for _ in texts]
+        vectors = {
+            "창조": [1.0, 0.0, 0.0],
+            "믿음": [0.0, 1.0, 0.0],
+            "위로": [0.0, 0.0, 1.0],
+        }
+        return [vectors.get(text, [0.0, 0.0, 0.0]) for text in texts]
 
 
 class FakeVectorIndex:
-    def search(self, _vector, limit: int = 5):
-        return [
-            ("Genesis 1:1-Genesis 1:3", 0.90),
-            ("Hebrews 11:1-Hebrews 11:1", 0.88),
-            ("Romans 8:28-Romans 8:28", 0.87),
-        ][:limit]
+    def search(self, vector, limit: int = 5):
+        rankings = {
+            (1.0, 0.0, 0.0): [
+                ("Genesis 1:1-Genesis 1:3", 0.90),
+                ("Hebrews 11:1-Hebrews 11:1", 0.10),
+                ("Romans 8:28-Romans 8:28", 0.05),
+            ],
+            (0.0, 1.0, 0.0): [
+                ("Hebrews 11:1-Hebrews 11:1", 0.90),
+                ("Romans 8:28-Romans 8:28", 0.10),
+                ("Genesis 1:1-Genesis 1:3", 0.05),
+            ],
+            (0.0, 0.0, 1.0): [
+                ("Romans 8:28-Romans 8:28", 0.90),
+                ("Genesis 1:1-Genesis 1:3", 0.10),
+                ("Hebrews 11:1-Hebrews 11:1", 0.05),
+            ],
+        }
+        return rankings.get(tuple(vector), [])[:limit]
 
 
 def test_golden_queries_return_expected_reference(tmp_path: Path) -> None:
@@ -49,5 +67,4 @@ def test_golden_queries_return_expected_reference(tmp_path: Path) -> None:
 
     for item in payload:
         results = service.search(item["query"], limit=3)
-        references = [result.reference for result in results]
-        assert any(reference in item["expected_any_reference"] for reference in references)
+        assert results[0].reference in item["expected_any_reference"]
