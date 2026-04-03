@@ -16,6 +16,8 @@ class FaissChunkIndex:
         self._matrix: np.ndarray | None = None
 
     def build(self, embeddings: list[tuple[str, list[float]]]) -> None:
+        if not embeddings:
+            raise ValueError("cannot build a FAISS index from empty embeddings")
         self.id_map = [chunk_id for chunk_id, _ in embeddings]
         matrix = np.array([vector for _, vector in embeddings], dtype="float32")
         self.index = faiss.IndexFlatIP(matrix.shape[1])
@@ -27,8 +29,15 @@ class FaissChunkIndex:
         )
 
     def load(self) -> None:
-        self.id_map = json.loads(self.mapping_path.read_text(encoding="utf-8"))
-        self.index = faiss.read_index(str(self.path))
+        id_map = json.loads(self.mapping_path.read_text(encoding="utf-8"))
+        index = faiss.read_index(str(self.path))
+        if index.ntotal != len(id_map):
+            raise ValueError(
+                "FAISS index and mapping cardinality mismatch: "
+                f"{index.ntotal} vectors for {len(id_map)} ids"
+            )
+        self.id_map = id_map
+        self.index = index
 
     def search(self, query_vector: list[float], limit: int = 5) -> list[tuple[str, float]]:
         if self.index is None:

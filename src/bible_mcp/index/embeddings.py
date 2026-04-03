@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 import sqlite3
+from typing import Protocol
 
 
 class Embedder(ABC):
@@ -9,6 +10,11 @@ class Embedder(ABC):
     @abstractmethod
     def embed(self, texts: list[str]) -> list[list[float]]:
         raise NotImplementedError
+
+
+class VectorStore(Protocol):
+    def build(self, embeddings: list[tuple[str, list[float]]]) -> None:
+        ...
 
 
 class SentenceTransformerEmbedder(Embedder):
@@ -32,14 +38,25 @@ class SentenceTransformerEmbedder(Embedder):
 def index_chunk_embeddings(
     conn: sqlite3.Connection,
     embedder: Embedder,
-    vector_store,
+    vector_store: VectorStore,
     embedding_version: str = "v1",
 ) -> None:
     rows = conn.execute(
         "select chunk_id, text from passage_chunks order by id"
     ).fetchall()
+    if not rows:
+        raise ValueError("cannot index empty passage chunk embeddings")
+
+    chunk_ids = [row["chunk_id"] for row in rows]
     texts = [row["text"] for row in rows]
-    embeddings = list(zip([row["chunk_id"] for row in rows], embedder.embed(texts)))
+    vectors = embedder.embed(texts)
+
+    if not vectors:
+        raise ValueError("embedder returned no embeddings")
+    if len(vectors) != len(chunk_ids):
+        raise ValueError("embedder returned a different number of embeddings than inputs")
+
+    embeddings = [(chunk_ids[index], vectors[index]) for index in range(len(chunk_ids))]
 
     with conn:
         conn.execute("delete from chunk_embeddings")
@@ -56,4 +73,4 @@ def index_chunk_embeddings(
                     datetime.now(UTC).isoformat(),
                 ),
             )
-    vector_store.build(embeddings)
+        vector_store.build(embeddings)

@@ -1,9 +1,11 @@
 from pathlib import Path
 import sqlite3
 
-from bible_mcp.index.faiss_store import FaissChunkIndex
-from bible_mcp.index.embeddings import index_chunk_embeddings
+import pytest
+
 from bible_mcp.db.schema import ensure_schema
+from bible_mcp.index.embeddings import index_chunk_embeddings
+from bible_mcp.index.faiss_store import FaissChunkIndex
 
 
 class FakeEmbedder:
@@ -21,6 +23,18 @@ class FakeVectorStore:
         self.embeddings = embeddings
 
 
+class FailingVectorStore:
+    def build(self, embeddings: list[tuple[str, list[float]]]) -> None:
+        raise RuntimeError("vector store failed")
+
+
+class ShortEmbedder:
+    model_name = "short"
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return [[1.0, 0.0]] if texts else []
+
+
 def test_faiss_index_round_trip(tmp_path: Path) -> None:
     path = tmp_path / "chunks.faiss"
     store = FaissChunkIndex(path)
@@ -34,6 +48,30 @@ def test_faiss_index_round_trip(tmp_path: Path) -> None:
     matches = reloaded.search([1.0, 0.0], limit=1)
 
     assert matches[0][0] == "chunk-a"
+
+
+def test_faiss_index_rejects_empty_embeddings(tmp_path: Path) -> None:
+    store = FaissChunkIndex(tmp_path / "chunks.faiss")
+
+    with pytest.raises(ValueError, match="empty"):
+        store.build([])
+
+
+def test_faiss_index_detects_stale_mapping_cardinality(tmp_path: Path) -> None:
+    path = tmp_path / "chunks.faiss"
+    store = FaissChunkIndex(path)
+    store.build(
+        [
+            ("chunk-a", [1.0, 0.0]),
+            ("chunk-b", [0.0, 1.0]),
+        ]
+    )
+    store.mapping_path.write_text('["chunk-a"]', encoding="utf-8")
+
+    reloaded = FaissChunkIndex(path)
+
+    with pytest.raises(ValueError, match="mapping"):
+        reloaded.search([1.0, 0.0], limit=1)
 
 
 def test_index_chunk_embeddings_writes_metadata_and_vectors() -> None:
@@ -80,3 +118,87 @@ def test_index_chunk_embeddings_writes_metadata_and_vectors() -> None:
     assert row["embedding_version"] == "v1"
     assert row["updated_at"]
     assert vector_store.embeddings == [("chunk-a", [1.0, 2.0])]
+
+
+def test_index_chunk_embeddings_rolls_back_metadata_when_vector_store_fails() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    ensure_schema(conn)
+    conn.execute(
+        """
+        insert into passage_chunks(
+            chunk_id,
+            start_ref,
+            end_ref,
+            book,
+            chapter_range,
+            text,
+            token_count,
+            chunk_strategy
+        )
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "chunk-a",
+            "Genesis 1:1",
+            "Genesis 1:1",
+            "Genesis",
+            "1",
+            "태초에 하나님이 천지를 창조하시니라",
+            5,
+            "verse_window",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="vector store failed"):
+        index_chunk_embeddings(conn, FakeEmbedder(), FailingVectorStore())
+
+    assert conn.execute("select count(*) from chunk_embeddings").fetchone()[0] == 0
+
+
+def test_index_chunk_embeddings_rejects_vector_count_mismatch() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    ensure_schema(conn)
+    conn.executemany(
+        """
+        insert into passage_chunks(
+            chunk_id,
+            start_ref,
+            end_ref,
+            book,
+            chapter_range,
+            text,
+            token_count,
+            chunk_strategy
+        )
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                "chunk-a",
+                "Genesis 1:1",
+                "Genesis 1:1",
+                "Genesis",
+                "1",
+                "태초에 하나님이 천지를 창조하시니라",
+                5,
+                "verse_window",
+            ),
+            (
+                "chunk-b",
+                "Genesis 1:2",
+                "Genesis 1:2",
+                "Genesis",
+                "1",
+                "땅이 혼돈하고 공허하며",
+                4,
+                "verse_window",
+            ),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="embedding"):
+        index_chunk_embeddings(conn, ShortEmbedder(), FakeVectorStore())
+
+    assert conn.execute("select count(*) from chunk_embeddings").fetchone()[0] == 0
