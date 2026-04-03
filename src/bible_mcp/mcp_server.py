@@ -8,9 +8,12 @@ def _to_payload(value):
 
 
 def _require_text(value, field_name: str) -> str:
-    if value is None or not str(value).strip():
+    if value is None:
         raise ValueError(f"{field_name} cannot be blank")
-    return str(value)
+    text = str(value).strip()
+    if not text:
+        raise ValueError(f"{field_name} cannot be blank")
+    return text
 
 
 def _optional_text(value) -> str | None:

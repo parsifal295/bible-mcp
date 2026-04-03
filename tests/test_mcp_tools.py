@@ -180,7 +180,7 @@ def test_expand_context_handler_rejects_negative_window() -> None:
         handlers["expand_context"]({"reference": "Genesis 1:2", "window": -1})
 
 
-def test_search_entities_handler_forwards_optional_filters() -> None:
+def test_search_entities_handler_trims_required_query_and_forwards_optional_filters() -> None:
     entity_service = FakeEntityService()
     handlers = build_tool_handlers(
         FakeSearchService(),
@@ -192,7 +192,7 @@ def test_search_entities_handler_forwards_optional_filters() -> None:
     )
 
     result = handlers["search_entities"](
-        {"query": "아브라함", "entity_type": "people", "limit": 2}
+        {"query": " 아브라함 ", "entity_type": " people ", "limit": 2}
     )
 
     assert entity_service.calls == [
@@ -221,7 +221,7 @@ def test_search_entities_handler_rejects_invalid_limit() -> None:
         handlers["search_entities"]({"query": "아브라함", "limit": 0})
 
 
-def test_get_entity_relations_handler_forwards_optional_filters() -> None:
+def test_get_entity_relations_handler_trims_required_inputs_and_forwards_optional_filters() -> None:
     relation_service = FakeRelationService()
     handlers = build_tool_handlers(
         FakeSearchService(),
@@ -234,10 +234,10 @@ def test_get_entity_relations_handler_forwards_optional_filters() -> None:
 
     result = handlers["get_entity_relations"](
         {
-            "query": "아브라함",
-            "relation_type": "father",
-            "entity_type": "people",
-            "direction": "incoming",
+            "query": " 아브라함 ",
+            "relation_type": " father ",
+            "entity_type": " people ",
+            "direction": " incoming ",
             "limit": 3,
         }
     )

@@ -242,6 +242,40 @@ def test_create_mcp_server_registers_optional_tools_when_collaborators_are_prese
     }
 
 
+def test_create_mcp_server_registers_entity_search_without_relation_lookup() -> None:
+    class FakeSearchService:
+        def search(self, query: str, limit: int = 5):
+            return []
+
+    class FakePassageService:
+        def lookup(self, reference: str):
+            return {"reference": reference, "passage_text": "본문"}
+
+        def expand_context(self, reference: str, window: int = 2):
+            return {"reference": reference, "passage_text": "문맥"}
+
+    class FakeEntityService:
+        def search(self, query: str, entity_type: str | None = None, limit: int = 5):
+            return [{"display_name": "아브라함"}]
+
+    mcp = create_mcp_server(
+        FakeSearchService(),
+        FakePassageService(),
+        None,
+        None,
+        FakeEntityService(),
+        None,
+    )
+    tools = asyncio.run(mcp.list_tools())
+
+    assert {tool.name for tool in tools} == {
+        "search_bible",
+        "lookup_passage",
+        "expand_context",
+        "search_entities",
+    }
+
+
 def test_related_passage_service_skips_missing_chunk_rows(tmp_path) -> None:
     from bible_mcp.db.connection import connect_db
     from bible_mcp.db.schema import ensure_schema
