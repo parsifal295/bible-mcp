@@ -52,11 +52,11 @@ def test_golden_queries_return_expected_reference(tmp_path: Path) -> None:
         values (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
-            ("KOR", "Genesis", 1, 1, 1, "Genesis 1:1", "OT", "태초에 하나님이 천지를 창조하시니라"),
+            ("KOR", "Genesis", 1, 1, 1, "Genesis 1:1", "OT", "태초에 하나님이 천지를 창조 하시니라"),
             ("KOR", "Genesis", 1, 1, 2, "Genesis 1:2", "OT", "땅이 혼돈하고 공허하며"),
             ("KOR", "Genesis", 1, 1, 3, "Genesis 1:3", "OT", "하나님이 이르시되 빛이 있으라 하시니"),
-            ("KOR", "Hebrews", 58, 11, 1, "Hebrews 11:1", "NT", "믿음은 바라는 것들의 실상이요 보이지 않는 것들의 증거니"),
-            ("KOR", "Romans", 45, 8, 28, "Romans 8:28", "NT", "하나님을 사랑하는 자 곧 그의 뜻대로 부르심을 입은 자들에게는"),
+            ("KOR", "Hebrews", 58, 11, 1, "Hebrews 11:1", "NT", "믿음 은 바라는 것들의 실상이요 보이지 않는 것들의 증거니"),
+            ("KOR", "Romans", 45, 8, 28, "Romans 8:28", "NT", "하나님을 사랑하는 자 곧 그의 뜻대로 부르심을 입은 자들에게는 위로"),
         ],
     )
     conn.commit()
@@ -67,4 +67,5 @@ def test_golden_queries_return_expected_reference(tmp_path: Path) -> None:
 
     for item in payload:
         results = service.search(item["query"], limit=3)
-        assert results[0].reference in item["expected_any_reference"]
+        assert results[0].reference == item["expected_reference"]
+        assert set(results[0].match_reasons) == {"keyword", "semantic"}
