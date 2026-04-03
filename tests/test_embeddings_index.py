@@ -122,6 +122,41 @@ def test_faiss_index_cleans_up_if_sidecar_write_fails(
     assert not store.integrity_path.exists()
 
 
+def test_faiss_index_restores_previous_artifacts_if_final_replace_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "chunks.faiss"
+    store = FaissChunkIndex(path)
+    store.build(
+        [
+            ("chunk-a", [1.0, 0.0]),
+            ("chunk-b", [0.0, 1.0]),
+        ]
+    )
+
+    original_replace = Path.replace
+
+    def failing_replace(self: Path, target: Path):
+        if self == path.with_name("chunks.faiss.tmp") and target == path:
+            raise RuntimeError("final publish failed")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", failing_replace)
+
+    with pytest.raises(RuntimeError, match="final publish failed"):
+        store.build(
+            [
+                ("chunk-c", [0.0, 1.0]),
+                ("chunk-d", [1.0, 0.0]),
+            ]
+        )
+
+    reloaded = FaissChunkIndex(path)
+    matches = reloaded.search([1.0, 0.0], limit=1)
+
+    assert matches[0][0] == "chunk-a"
+
+
 def test_index_chunk_embeddings_writes_metadata_and_vectors() -> None:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row

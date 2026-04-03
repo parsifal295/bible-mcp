@@ -34,6 +34,18 @@ class FaissChunkIndex:
         for path in paths:
             path.unlink(missing_ok=True)
 
+    @staticmethod
+    def _backup_path(path: Path) -> Path:
+        return path.with_name(f"{path.name}.bak")
+
+    def _restore_backups(self, backups: dict[Path, Path]) -> None:
+        for live_path, backup_path in backups.items():
+            live_path.unlink(missing_ok=True)
+            backup_path.replace(live_path)
+
+    def _clear_partial_publication(self) -> None:
+        self._cleanup_paths(self.path, self.mapping_path, self.integrity_path)
+
     def build(self, embeddings: list[tuple[str, list[float]]]) -> None:
         if not embeddings:
             raise ValueError("cannot build a FAISS index from empty embeddings")
@@ -54,17 +66,32 @@ class FaissChunkIndex:
         index_tmp = self._temp_path(self.path)
         mapping_tmp = self._temp_path(self.mapping_path)
         integrity_tmp = self._temp_path(self.integrity_path)
+        backups: dict[Path, Path] = {}
 
         try:
             faiss.write_index(index, str(index_tmp))
             mapping_tmp.write_text(mapping_text, encoding="utf-8")
             integrity_tmp.write_text(integrity_text, encoding="utf-8")
+            for live_path in (self.path, self.mapping_path, self.integrity_path):
+                backup_path = self._backup_path(live_path)
+                if live_path.exists():
+                    self._cleanup_paths(backup_path)
+                    live_path.replace(backup_path)
+                    backups[live_path] = backup_path
+
             mapping_tmp.replace(self.mapping_path)
             integrity_tmp.replace(self.integrity_path)
             index_tmp.replace(self.path)
         except Exception:
+            if backups:
+                self._restore_backups(backups)
+            else:
+                self._clear_partial_publication()
             self._cleanup_paths(index_tmp, mapping_tmp, integrity_tmp)
+            self._cleanup_paths(*backups.values())
             raise
+        else:
+            self._cleanup_paths(*backups.values())
         self.index = index
 
     def load(self) -> None:
