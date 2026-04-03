@@ -112,6 +112,7 @@ def import_verses(config: AppConfig, conn: sqlite3.Connection) -> None:
         source.close()
 
     with conn:
+        reset_indexes(conn)
         conn.execute("delete from verses")
 
         for row in rows:
@@ -148,8 +149,7 @@ def import_verses(config: AppConfig, conn: sqlite3.Connection) -> None:
 
 
 def reset_indexes(conn: sqlite3.Connection) -> None:
-    with conn:
-        conn.execute("delete from verses_fts")
-        conn.execute("delete from passage_chunks")
-        conn.execute("delete from passage_chunks_fts")
-        conn.execute("delete from chunk_embeddings")
+    conn.execute("insert into verses_fts(verses_fts) values('delete-all')")
+    conn.execute("insert into passage_chunks_fts(passage_chunks_fts) values('delete-all')")
+    conn.execute("delete from passage_chunks")
+    conn.execute("delete from chunk_embeddings")
