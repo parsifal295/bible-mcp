@@ -12,13 +12,12 @@ class ParsedReference:
     end_verse: int | None
 
 
-REFERENCE_RE = re.compile(r"^\s*([^\d]+?)\s+(\d+):(\d+)(?:-(\d+))?\s*$")
-CHAPTER_RE = re.compile(r"^\s*([^\d]+?)\s+(\d+)장\s*$")
+REFERENCE_RE = re.compile(r"^\s*(.+?)\s+(\d+):(\d+)(?:-(\d+))?\s*$")
+CHAPTER_RE = re.compile(r"^\s*(.+?)\s+(\d+)장\s*$")
 
 
 def _normalize_book(raw_book: str) -> str | None:
-    cleaned = raw_book.strip()
-    return BOOK_ALIASES.get(cleaned.lower()) or BOOK_ALIASES.get(cleaned)
+    return BOOK_ALIASES.get(raw_book.strip().lower())
 
 
 def parse_reference(text: str) -> ParsedReference | None:
