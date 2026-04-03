@@ -1,0 +1,17 @@
+[
+  {
+    "slug": "exodus",
+    "display_name": "출애굽",
+    "description": "이스라엘 백성이 애굽에서 나온 사건"
+  },
+  {
+    "slug": "crucifixion",
+    "display_name": "십자가 처형",
+    "description": "예수의 십자가 사건"
+  },
+  {
+    "slug": "resurrection",
+    "display_name": "부활",
+    "description": "예수의 부활 사건"
+  }
+]

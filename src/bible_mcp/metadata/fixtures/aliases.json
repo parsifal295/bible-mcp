@@ -1,0 +1,52 @@
+[
+  {
+    "entity_type": "people",
+    "entity_slug": "abraham",
+    "alias": "아브람"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "isaac",
+    "alias": "이사악"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "jacob",
+    "alias": "이스라엘"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "jesse",
+    "alias": "이새의 아들"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "david",
+    "alias": "다윗 왕"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "jesus",
+    "alias": "예수 그리스도"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "peter",
+    "alias": "시몬 베드로"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "john",
+    "alias": "사도 요한"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "jerusalem",
+    "alias": "시온"
+  },
+  {
+    "entity_type": "events",
+    "entity_slug": "crucifixion",
+    "alias": "십자가 사건"
+  }
+]

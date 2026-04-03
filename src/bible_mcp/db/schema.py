@@ -84,6 +84,23 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             entity_slug text not null,
             reference text not null
         );
+
+        create table if not exists entity_relationships (
+            id integer primary key,
+            source_type text not null,
+            source_slug text not null,
+            relation_type text not null,
+            target_type text not null,
+            target_slug text not null,
+            is_primary integer not null default 0,
+            note text
+        );
+
+        create index if not exists idx_entity_relationships_source
+        on entity_relationships(source_type, source_slug);
+
+        create index if not exists idx_entity_relationships_target
+        on entity_relationships(target_type, target_slug);
         """
     )
     conn.commit()

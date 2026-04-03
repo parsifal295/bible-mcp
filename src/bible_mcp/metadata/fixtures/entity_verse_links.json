@@ -1,0 +1,57 @@
+[
+  {
+    "entity_type": "people",
+    "entity_slug": "abraham",
+    "reference": "Genesis 12:1"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "isaac",
+    "reference": "Genesis 21:3"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "jacob",
+    "reference": "Genesis 25:26"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "jesse",
+    "reference": "1 Samuel 16:1"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "david",
+    "reference": "1 Samuel 16:13"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "jesus",
+    "reference": "Matthew 1:21"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "peter",
+    "reference": "Matthew 4:18"
+  },
+  {
+    "entity_type": "people",
+    "entity_slug": "john",
+    "reference": "Matthew 4:21"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "bethlehem",
+    "reference": "Matthew 2:1"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "jerusalem",
+    "reference": "Psalm 122:6"
+  },
+  {
+    "entity_type": "events",
+    "entity_slug": "resurrection",
+    "reference": "Matthew 28:6"
+  }
+]

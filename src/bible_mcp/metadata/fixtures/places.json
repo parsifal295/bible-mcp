@@ -1,0 +1,20 @@
+[
+  {
+    "slug": "jerusalem",
+    "display_name": "예루살렘",
+    "latitude": 31.778,
+    "longitude": 35.235
+  },
+  {
+    "slug": "bethlehem",
+    "display_name": "베들레헴",
+    "latitude": 31.705,
+    "longitude": 35.202
+  },
+  {
+    "slug": "nazareth",
+    "display_name": "나사렛",
+    "latitude": 32.699,
+    "longitude": 35.304
+  }
+]

@@ -1,0 +1,47 @@
+[
+  {
+    "slug": "abraham",
+    "display_name": "아브라함",
+    "description": "믿음의 조상으로 불린 족장"
+  },
+  {
+    "slug": "isaac",
+    "display_name": "이삭",
+    "description": "아브라함의 아들"
+  },
+  {
+    "slug": "jacob",
+    "display_name": "야곱",
+    "description": "이스라엘이라는 이름을 받은 족장"
+  },
+  {
+    "slug": "jesse",
+    "display_name": "이새",
+    "description": "다윗의 아버지"
+  },
+  {
+    "slug": "david",
+    "display_name": "다윗",
+    "description": "이스라엘 왕"
+  },
+  {
+    "slug": "mary",
+    "display_name": "마리아",
+    "description": "예수의 어머니"
+  },
+  {
+    "slug": "jesus",
+    "display_name": "예수",
+    "description": "신약의 중심 인물"
+  },
+  {
+    "slug": "peter",
+    "display_name": "베드로",
+    "description": "예수의 제자"
+  },
+  {
+    "slug": "john",
+    "display_name": "요한",
+    "description": "예수의 제자"
+  }
+]

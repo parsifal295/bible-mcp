@@ -1,0 +1,47 @@
+[
+  {
+    "source_type": "people",
+    "source_slug": "abraham",
+    "relation_type": "father",
+    "target_type": "people",
+    "target_slug": "isaac",
+    "is_primary": true,
+    "note": "patriarch line"
+  },
+  {
+    "source_type": "people",
+    "source_slug": "isaac",
+    "relation_type": "father",
+    "target_type": "people",
+    "target_slug": "jacob",
+    "is_primary": true,
+    "note": "patriarch line"
+  },
+  {
+    "source_type": "people",
+    "source_slug": "jesse",
+    "relation_type": "father",
+    "target_type": "people",
+    "target_slug": "david",
+    "is_primary": true,
+    "note": "royal line"
+  },
+  {
+    "source_type": "people",
+    "source_slug": "peter",
+    "relation_type": "disciple_of",
+    "target_type": "people",
+    "target_slug": "jesus",
+    "is_primary": true,
+    "note": null
+  },
+  {
+    "source_type": "people",
+    "source_slug": "john",
+    "relation_type": "disciple_of",
+    "target_type": "people",
+    "target_slug": "jesus",
+    "is_primary": true,
+    "note": null
+  }
+]
