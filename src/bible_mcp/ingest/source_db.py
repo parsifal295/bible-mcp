@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 
 from bible_mcp.config import SourceBibleConfig
+from bible_mcp.query.parser import parse_reference
 
 
 class SourceSchemaError(RuntimeError):
@@ -40,3 +41,37 @@ def validate_source_database(config: SourceBibleConfig) -> list[str]:
         ordered = ", ".join(sorted(missing))
         raise SourceSchemaError(f"Missing required source columns: {ordered}")
     return columns
+
+
+def validate_source_reference(config: SourceBibleConfig, reference: str) -> None:
+    parsed = parse_reference(reference)
+    if (
+        parsed is None
+        or parsed.start_verse is None
+        or parsed.end_verse is None
+        or parsed.start_verse != parsed.end_verse
+    ):
+        raise SourceSchemaError(f"Source reference must be a single verse: {reference}")
+
+    validate_source_database(config)
+
+    conn = None
+    try:
+        conn = sqlite3.connect(config.path)
+        row = conn.execute(
+            f"""
+            select 1
+            from {_quote_identifier(config.table)}
+            where book = ? and chapter = ? and verse = ?
+            limit 1
+            """,
+            (parsed.book, parsed.chapter, parsed.start_verse),
+        ).fetchone()
+    except sqlite3.Error as exc:
+        raise SourceSchemaError(f"Failed to validate source reference: {reference}") from exc
+    finally:
+        if conn is not None:
+            conn.close()
+
+    if row is None:
+        raise SourceSchemaError(f"Source reference not found: {reference}")

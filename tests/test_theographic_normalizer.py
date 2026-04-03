@@ -31,13 +31,65 @@ def test_normalize_theographic_snapshot_builds_bundle_with_overlay_aliases_and_l
         raw_dir / "people.json",
         [
             {
-                "id": "row_people_1",
+                "id": "abraham-id",
                 "fields": {
                     "slug": "abraham_58",
                     "name": "Abram",
                     "displayTitle": "Abraham",
                     "dictionaryText": "Raw Abraham paragraph one.\n\nRaw paragraph two.",
                     "verses": ["verse_gen_12_1", "verse_gen_15_6", "verse_gen_22_2"],
+                    "gender": "male",
+                    "children": ["isaac-id"],
+                    "partners": ["sarah-id"],
+                },
+            },
+            {
+                "id": "isaac-id",
+                "fields": {
+                    "slug": "isaac_616",
+                    "name": "Isaac",
+                    "displayTitle": "Isaac",
+                    "dictText": "Child of promise.",
+                    "verses": ["verse_gen_22_2"],
+                    "gender": "male",
+                    "father": ["abraham-id"],
+                    "mother": ["sarah-id"],
+                    "siblings": ["ishmael-id"],
+                },
+            },
+            {
+                "id": "sarah-id",
+                "fields": {
+                    "slug": "sarah_301",
+                    "name": "Sarah",
+                    "displayTitle": "Sarah",
+                    "dictText": "Wife of Abraham.",
+                    "verses": ["verse_gen_12_1"],
+                    "gender": "female",
+                    "partners": ["abraham-id"],
+                    "children": ["isaac-id"],
+                },
+            },
+            {
+                "id": "ishmael-id",
+                "fields": {
+                    "slug": "ishmael_700",
+                    "name": "Ishmael",
+                    "displayTitle": "Ishmael",
+                    "dictText": "Son of Abraham.",
+                    "verses": ["verse_gen_15_2"],
+                    "gender": "male",
+                    "siblings": ["isaac-id"],
+                },
+            },
+            {
+                "id": "guardian-id",
+                "fields": {
+                    "slug": "guardian-unknown",
+                    "name": "Guardian Unknown",
+                    "displayTitle": "Guardian Unknown",
+                    "dictText": "Parent with unknown gender.",
+                    "children": ["isaac-id"],
                 },
             },
             {
@@ -157,4 +209,24 @@ def test_normalize_theographic_snapshot_builds_bundle_with_overlay_aliases_and_l
     assert verse_links.count(("places", "jerusalem", "Luke 2:22")) == 1
     assert ("places", "jerusalem", "Matthew 5:35") not in verse_links
 
-    assert bundle.relationships == []
+    relation_rows = [
+        (row.source_slug, row.relation_type, row.target_slug) for row in bundle.relationships
+    ]
+    assert ("abraham", "father", "isaac") in relation_rows
+    assert ("abraham", "child", "isaac") in relation_rows
+    assert ("abraham", "son", "isaac") in relation_rows
+    assert ("sarah_301", "mother", "isaac") in relation_rows
+    assert ("sarah_301", "child", "isaac") in relation_rows
+    assert ("sarah_301", "son", "isaac") in relation_rows
+    assert ("abraham", "spouse", "sarah_301") in relation_rows
+    assert ("sarah_301", "spouse", "abraham") in relation_rows
+    assert ("isaac", "brother", "ishmael_700") in relation_rows
+    assert ("ishmael_700", "brother", "isaac") in relation_rows
+    assert ("guardian-unknown", "father", "isaac") in relation_rows
+    assert relation_rows.count(("abraham", "father", "isaac")) == 1
+
+    for row in bundle.relationships:
+        assert row.source_type == "people"
+        assert row.target_type == "people"
+        assert row.is_primary is True
+        assert row.note == "theographic"

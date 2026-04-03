@@ -4,6 +4,7 @@ from pathlib import Path
 
 from bible_mcp.metadata.models import (
     EntityAliasRecord,
+    EntityRelationshipRecord,
     EntityVerseLinkRecord,
     MetadataBundle,
     MetadataEntity,
@@ -109,6 +110,9 @@ def normalize_theographic_snapshot(
     events: list[MetadataEntity] = []
     aliases: list[EntityAliasRecord] = []
     links: list[EntityVerseLinkRecord] = []
+    relationship_fields: list[tuple[str, dict]] = []
+    id_to_slug: dict[str, str] = {}
+    gender_by_slug: dict[str, str] = {}
 
     for row in people_rows:
         fields = _fields(row)
@@ -130,6 +134,13 @@ def normalize_theographic_snapshot(
                 description=description,
             )
         )
+        row_id = _string(row.get("id"))
+        if row_id:
+            id_to_slug[row_id] = entity_slug
+        gender = _normalize_gender(fields.get("gender"))
+        if gender:
+            gender_by_slug[entity_slug] = gender
+        relationship_fields.append((entity_slug, fields))
 
         alias_values = _alias_values(
             fields.get("displayTitle"),
@@ -214,13 +225,15 @@ def normalize_theographic_snapshot(
             )
         )
 
+    relationships = _build_people_relationships(relationship_fields, id_to_slug, gender_by_slug)
+
     return MetadataBundle(
         people=people,
         places=places,
         events=events,
         aliases=aliases,
         entity_verse_links=links,
-        relationships=[],
+        relationships=relationships,
     )
 
 
@@ -370,3 +383,122 @@ def _build_link_rows(
         if len(rows) >= link_limit:
             break
     return rows
+
+
+def _build_people_relationships(
+    relationship_fields: list[tuple[str, dict]],
+    id_to_slug: dict[str, str],
+    gender_by_slug: dict[str, str],
+) -> list[EntityRelationshipRecord]:
+    known_slugs = set(id_to_slug.values())
+    dedup: dict[tuple[str, str, str], EntityRelationshipRecord] = {}
+
+    for source_slug, fields in relationship_fields:
+        for parent_slug in _resolve_related_slugs(fields.get("father"), id_to_slug, known_slugs):
+            _append_parent_child_rows(dedup, gender_by_slug, parent_slug, source_slug, "father")
+
+        for parent_slug in _resolve_related_slugs(fields.get("mother"), id_to_slug, known_slugs):
+            _append_parent_child_rows(dedup, gender_by_slug, parent_slug, source_slug, "mother")
+
+        parent_gender = gender_by_slug.get(source_slug)
+        parent_relation = "father" if parent_gender == "male" else "mother" if parent_gender == "female" else "father"
+        for child_slug in _resolve_related_slugs(fields.get("children"), id_to_slug, known_slugs):
+            _append_relationship(dedup, source_slug, parent_relation, child_slug)
+            _append_relationship(dedup, source_slug, "child", child_slug)
+            child_relation = _child_relation_type(gender_by_slug.get(child_slug))
+            if child_relation:
+                _append_relationship(dedup, source_slug, child_relation, child_slug)
+
+        for partner_slug in _resolve_related_slugs(fields.get("partners"), id_to_slug, known_slugs):
+            _append_relationship(dedup, source_slug, "spouse", partner_slug)
+            _append_relationship(dedup, partner_slug, "spouse", source_slug)
+
+        for sibling_slug in _resolve_related_slugs(fields.get("siblings"), id_to_slug, known_slugs):
+            sibling_relation = _sibling_relation_type(gender_by_slug.get(sibling_slug))
+            if sibling_relation:
+                _append_relationship(dedup, source_slug, sibling_relation, sibling_slug)
+            reciprocal_relation = _sibling_relation_type(gender_by_slug.get(source_slug))
+            if reciprocal_relation:
+                _append_relationship(dedup, sibling_slug, reciprocal_relation, source_slug)
+
+    return list(dedup.values())
+
+
+def _append_parent_child_rows(
+    dedup: dict[tuple[str, str, str], EntityRelationshipRecord],
+    gender_by_slug: dict[str, str],
+    parent_slug: str,
+    child_slug: str,
+    parent_relation: str,
+) -> None:
+    _append_relationship(dedup, parent_slug, parent_relation, child_slug)
+    _append_relationship(dedup, parent_slug, "child", child_slug)
+    child_relation = _child_relation_type(gender_by_slug.get(child_slug))
+    if child_relation:
+        _append_relationship(dedup, parent_slug, child_relation, child_slug)
+
+
+def _append_relationship(
+    dedup: dict[tuple[str, str, str], EntityRelationshipRecord],
+    source_slug: str,
+    relation_type: str,
+    target_slug: str,
+) -> None:
+    key = (source_slug, relation_type, target_slug)
+    if key in dedup:
+        return
+    dedup[key] = EntityRelationshipRecord(
+        source_type="people",
+        source_slug=source_slug,
+        relation_type=relation_type,
+        target_type="people",
+        target_slug=target_slug,
+        is_primary=True,
+        note="theographic",
+    )
+
+
+def _resolve_related_slugs(
+    values: object,
+    id_to_slug: dict[str, str],
+    known_slugs: set[str],
+) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    dedup: dict[str, str] = {}
+    for value in values:
+        candidate = _string(value)
+        if not candidate:
+            continue
+        slug = id_to_slug.get(candidate)
+        if slug is None and candidate in known_slugs:
+            slug = candidate
+        if slug is None:
+            continue
+        dedup[slug] = slug
+    return list(dedup.values())
+
+
+def _normalize_gender(value: object) -> str | None:
+    text = _string(value).casefold()
+    if text in {"male", "m"}:
+        return "male"
+    if text in {"female", "f"}:
+        return "female"
+    return None
+
+
+def _child_relation_type(gender: str | None) -> str | None:
+    if gender == "male":
+        return "son"
+    if gender == "female":
+        return "daughter"
+    return None
+
+
+def _sibling_relation_type(gender: str | None) -> str | None:
+    if gender == "male":
+        return "brother"
+    if gender == "female":
+        return "sister"
+    return None
