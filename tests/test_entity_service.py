@@ -104,6 +104,13 @@ def test_search_respects_entity_type_filter_and_limit(tmp_path) -> None:
     ]
 
 
+def test_search_returns_empty_list_for_unsupported_entity_types(tmp_path) -> None:
+    conn, service = _build_service(tmp_path)
+    import_metadata_fixtures(conn)
+
+    assert service.search("Jerusalem", entity_type="angels", limit=5) == []
+
+
 def test_search_keeps_highest_priority_match_for_same_entity(tmp_path) -> None:
     conn, service = _build_service(tmp_path)
     conn.execute(
@@ -160,6 +167,37 @@ def test_search_resolves_english_aliases_from_default_fixture_bundle(
             "slug": slug,
             "display_name": display_name,
             "description": description,
+            "matched_by": "alias",
+        }
+    ]
+
+
+def test_search_keeps_default_scope_people_only_with_bundled_place_aliases(tmp_path) -> None:
+    conn, service = _build_service(tmp_path)
+    import_metadata_fixtures(conn)
+
+    assert service.search("Jerusalem", limit=5) == []
+
+
+def test_search_resolves_bundled_place_and_event_aliases(tmp_path) -> None:
+    conn, service = _build_service(tmp_path)
+    import_metadata_fixtures(conn)
+
+    assert service.search("Jerusalem", entity_type="places", limit=5) == [
+        {
+            "entity_type": "places",
+            "slug": "jerusalem",
+            "display_name": "예루살렘",
+            "description": None,
+            "matched_by": "alias",
+        }
+    ]
+    assert service.search("Resurrection", entity_type="events", limit=5) == [
+        {
+            "entity_type": "events",
+            "slug": "resurrection",
+            "display_name": "부활",
+            "description": "예수의 부활 사건",
             "matched_by": "alias",
         }
     ]

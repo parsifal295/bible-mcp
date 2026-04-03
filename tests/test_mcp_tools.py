@@ -12,6 +12,8 @@ from bible_mcp.db.connection import connect_db
 from bible_mcp.db.schema import ensure_schema
 from bible_mcp.index.faiss_store import FaissChunkIndex
 from bible_mcp.mcp_server import build_tool_handlers, create_mcp_server
+from bible_mcp.ingest.metadata_importer import import_metadata_fixtures
+from bible_mcp.services.entity_service import EntityService
 
 
 class FakeSearchService:
@@ -219,6 +221,37 @@ def test_search_entities_handler_rejects_invalid_limit() -> None:
 
     with pytest.raises(ValueError, match="limit must be at least 1"):
         handlers["search_entities"]({"query": "아브라함", "limit": 0})
+
+
+def test_search_entities_handler_returns_place_results_with_real_entity_service(tmp_path: Path) -> None:
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+    import_metadata_fixtures(conn)
+
+    handlers = build_tool_handlers(
+        FakeSearchService(),
+        FakePassageService(),
+        None,
+        None,
+        EntityService(conn),
+        None,
+    )
+
+    result = handlers["search_entities"](
+        {"query": "Jerusalem", "entity_type": "places", "limit": 1}
+    )
+
+    assert result == {
+        "results": [
+            {
+                "entity_type": "places",
+                "slug": "jerusalem",
+                "display_name": "예루살렘",
+                "description": None,
+                "matched_by": "alias",
+            }
+        ]
+    }
 
 
 def test_get_entity_relations_handler_trims_required_inputs_and_forwards_optional_filters() -> None:
