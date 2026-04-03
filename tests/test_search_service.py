@@ -17,6 +17,11 @@ class FakeEmbedder:
         return [[1.0, 0.0] for _ in texts]
 
 
+class EmptyVectorIndex:
+    def search(self, _vector, limit: int = 5):
+        return []
+
+
 def test_search_combines_keyword_and_semantic_hits(tmp_path: Path) -> None:
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
@@ -41,6 +46,57 @@ def test_search_combines_keyword_and_semantic_hits(tmp_path: Path) -> None:
     assert results[0].reference == "Genesis 1:1-Genesis 1:3"
     assert "keyword" in results[0].match_reasons
     assert "semantic" in results[0].match_reasons
+
+
+def test_search_orders_keyword_candidates_by_fts_relevance(tmp_path: Path) -> None:
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+    conn.executemany(
+        """
+        insert into verses(translation, book, book_order, chapter, verse, reference, testament, text)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            ("KOR", "Genesis", 1, 1, 1, "Genesis 1:1", "OT", "alpha"),
+            ("KOR", "Genesis", 1, 1, 2, "Genesis 1:2", "OT", "beta"),
+            ("KOR", "Genesis", 1, 1, 3, "Genesis 1:3", "OT", "alpha alpha"),
+            ("KOR", "Genesis", 1, 1, 4, "Genesis 1:4", "OT", "beta beta"),
+        ],
+    )
+    conn.commit()
+    build_chunks(conn, max_verses=2, stride=2)
+    rebuild_fts_indexes(conn)
+
+    service = SearchService(conn, FakeEmbedder(), EmptyVectorIndex())
+    results = service.search("alpha beta", limit=2)
+
+    assert results[0].reference == "Genesis 1:3-Genesis 1:4"
+    assert results[1].reference == "Genesis 1:1-Genesis 1:2"
+
+
+def test_search_marks_keyword_reason_for_cross_verse_chunk_only_match(tmp_path: Path) -> None:
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+    conn.executemany(
+        """
+        insert into verses(translation, book, book_order, chapter, verse, reference, testament, text)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            ("KOR", "Genesis", 1, 1, 1, "Genesis 1:1", "OT", "alpha"),
+            ("KOR", "Genesis", 1, 1, 2, "Genesis 1:2", "OT", "beta"),
+            ("KOR", "Genesis", 1, 1, 3, "Genesis 1:3", "OT", "gamma"),
+        ],
+    )
+    conn.commit()
+    build_chunks(conn, max_verses=3, stride=3)
+    rebuild_fts_indexes(conn)
+
+    service = SearchService(conn, FakeEmbedder(), EmptyVectorIndex())
+    results = service.search("alpha beta", limit=1)
+
+    assert results[0].reference == "Genesis 1:1-Genesis 1:3"
+    assert "keyword" in results[0].match_reasons
 
 
 def test_search_returns_cross_chapter_context_through_service(tmp_path: Path) -> None:

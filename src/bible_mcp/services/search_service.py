@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
-from bible_mcp.index.fts import search_keyword
 from bible_mcp.query.context import expand_chunk_context
 from bible_mcp.query.hybrid import fuse_scores
 
@@ -41,7 +40,6 @@ class SearchService:
         ).fetchone()
 
     def search(self, query: str, limit: int = 5) -> list[SearchResult]:
-        keyword_hits = search_keyword(self.conn, query, limit=limit)
         normalized_query = _normalize_query(query)
         semantic_query = self.embedder.embed([query])[0]
         semantic_hits = {
@@ -58,7 +56,7 @@ class SearchService:
                     from passage_chunks_fts
                     join passage_chunks pc on pc.id = passage_chunks_fts.rowid
                     where passage_chunks_fts match ?
-                    order by pc.id
+                    order by bm25(passage_chunks_fts), pc.id
                     limit ?
                     """,
                     (normalized_query, limit),
@@ -67,32 +65,8 @@ class SearchService:
                 candidates[chunk["chunk_id"]] = {
                     "chunk": chunk,
                     "keyword_score": 1.0 - (rank * 0.05),
-                    "keyword": bool(keyword_hits),
+                    "keyword": True,
                 }
-
-        for rank, hit in enumerate(keyword_hits):
-            chunk = self.conn.execute(
-                """
-                select chunk_id, start_ref, end_ref, text
-                from passage_chunks
-                where text like ?
-                order by id
-                limit 1
-                """,
-                (f"%{hit['text']}%",),
-            ).fetchone()
-            if chunk is None:
-                continue
-            entry = candidates.setdefault(
-                chunk["chunk_id"],
-                {
-                    "chunk": chunk,
-                    "keyword_score": 0.0,
-                    "keyword": False,
-                },
-            )
-            entry["keyword_score"] = max(float(entry["keyword_score"]), 1.0 - (rank * 0.05))
-            entry["keyword"] = True
 
         for chunk_id in semantic_hits:
             if chunk_id in candidates:
