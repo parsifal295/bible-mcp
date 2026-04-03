@@ -3,8 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from bible_mcp.db.schema import ensure_schema
-from bible_mcp.domain.metadata import ENTITY_TYPES, RELATION_TYPES
+from bible_mcp.domain.metadata import ENTITY_TYPES
 from bible_mcp.metadata.loader import DEFAULT_FIXTURE_DIR, load_metadata_fixtures
 
 
@@ -53,8 +52,6 @@ def _validate_bundle(bundle) -> None:
         )
 
     for relationship in bundle.relationships:
-        if relationship.relation_type not in RELATION_TYPES:
-            raise ValueError(f"Unknown relation_type: {relationship.relation_type}")
         _require_entity(
             entity_lookup,
             relationship.source_type,
@@ -78,71 +75,57 @@ def import_metadata_fixtures(
     conn: sqlite3.Connection,
     fixtures_dir: Path = DEFAULT_FIXTURE_DIR,
 ) -> None:
-    ensure_schema(conn)
     bundle = load_metadata_fixtures(fixtures_dir)
     _validate_bundle(bundle)
 
-    with conn:
-        _delete_metadata_rows(conn)
+    _delete_metadata_rows(conn)
 
-        conn.executemany(
-            "insert into people(slug, display_name, description) values (?, ?, ?)",
-            (
-                (row.slug, row.display_name, row.description)
-                for row in bundle.people
-            ),
+    conn.executemany(
+        "insert into people(slug, display_name, description) values (?, ?, ?)",
+        ((row.slug, row.display_name, row.description) for row in bundle.people),
+    )
+    conn.executemany(
+        "insert into places(slug, display_name, latitude, longitude) values (?, ?, ?, ?)",
+        ((row.slug, row.display_name, row.latitude, row.longitude) for row in bundle.places),
+    )
+    conn.executemany(
+        "insert into events(slug, display_name, description) values (?, ?, ?)",
+        ((row.slug, row.display_name, row.description) for row in bundle.events),
+    )
+    conn.executemany(
+        "insert into entity_aliases(entity_type, entity_slug, alias) values (?, ?, ?)",
+        ((row.entity_type, row.entity_slug, row.alias) for row in bundle.aliases),
+    )
+    conn.executemany(
+        "insert into entity_verse_links(entity_type, entity_slug, reference) values (?, ?, ?)",
+        (
+            (row.entity_type, row.entity_slug, row.reference)
+            for row in bundle.entity_verse_links
+        ),
+    )
+    conn.executemany(
+        """
+        insert into entity_relationships(
+            source_type,
+            source_slug,
+            relation_type,
+            target_type,
+            target_slug,
+            is_primary,
+            note
         )
-        conn.executemany(
-            "insert into places(slug, display_name, latitude, longitude) values (?, ?, ?, ?)",
+        values (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
             (
-                (row.slug, row.display_name, row.latitude, row.longitude)
-                for row in bundle.places
-            ),
-        )
-        conn.executemany(
-            "insert into events(slug, display_name, description) values (?, ?, ?)",
-            (
-                (row.slug, row.display_name, row.description)
-                for row in bundle.events
-            ),
-        )
-        conn.executemany(
-            "insert into entity_aliases(entity_type, entity_slug, alias) values (?, ?, ?)",
-            (
-                (row.entity_type, row.entity_slug, row.alias)
-                for row in bundle.aliases
-            ),
-        )
-        conn.executemany(
-            "insert into entity_verse_links(entity_type, entity_slug, reference) values (?, ?, ?)",
-            (
-                (row.entity_type, row.entity_slug, row.reference)
-                for row in bundle.entity_verse_links
-            ),
-        )
-        conn.executemany(
-            """
-            insert into entity_relationships(
-                source_type,
-                source_slug,
-                relation_type,
-                target_type,
-                target_slug,
-                is_primary,
-                note
+                row.source_type,
+                row.source_slug,
+                row.relation_type,
+                row.target_type,
+                row.target_slug,
+                int(row.is_primary),
+                row.note,
             )
-            values (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                (
-                    row.source_type,
-                    row.source_slug,
-                    row.relation_type,
-                    row.target_type,
-                    row.target_slug,
-                    int(row.is_primary),
-                    row.note,
-                )
-                for row in bundle.relationships
-            ),
-        )
+            for row in bundle.relationships
+        ),
+    )

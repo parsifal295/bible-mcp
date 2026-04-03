@@ -102,6 +102,23 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         create index if not exists idx_entity_relationships_target
         on entity_relationships(target_type, target_slug);
 
+        create unique index if not exists idx_entity_aliases_unique
+        on entity_aliases(entity_type, entity_slug, alias);
+
+        create unique index if not exists idx_entity_verse_links_unique
+        on entity_verse_links(entity_type, entity_slug, reference);
+
+        create unique index if not exists idx_entity_relationships_unique
+        on entity_relationships(
+            source_type,
+            source_slug,
+            relation_type,
+            target_type,
+            target_slug,
+            is_primary,
+            coalesce(note, '')
+        );
+
         create index if not exists idx_entity_aliases_entity
         on entity_aliases(entity_type, entity_slug);
 

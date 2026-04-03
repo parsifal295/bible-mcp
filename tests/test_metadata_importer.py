@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -157,6 +158,106 @@ def test_import_metadata_fixtures_replaces_existing_rows_on_rebuild(tmp_path: Pa
     assert people_slugs == ["abraham", "isaac"]
     assert [tuple(row) for row in alias_rows] == [("abraham", "Abram")]
     assert [tuple(row) for row in relationship_rows] == [("abraham", "isaac")]
+
+
+def test_import_metadata_fixtures_participates_in_caller_owned_transaction(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    _write_minimal_metadata_bundle(fixtures)
+
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+    conn.execute("create table audit_log(message text not null)")
+    conn.commit()
+
+    try:
+        with conn:
+            conn.execute(
+                "insert into audit_log(message) values (?)",
+                ("before import",),
+            )
+            import_metadata_fixtures(conn, fixtures_dir=fixtures)
+            raise RuntimeError("abort outer transaction")
+    except RuntimeError:
+        pass
+
+    assert conn.execute("select count(*) from audit_log").fetchone()[0] == 0
+    assert conn.execute("select count(*) from people").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "duplicate_payload", "count_query"),
+    [
+        (
+            "aliases.json",
+            [
+                {"entity_type": "people", "entity_slug": "abraham", "alias": "Abram"},
+                {"entity_type": "people", "entity_slug": "abraham", "alias": "Abram"},
+            ],
+            "select count(*) from entity_aliases",
+        ),
+        (
+            "entity_verse_links.json",
+            [
+                {
+                    "entity_type": "people",
+                    "entity_slug": "abraham",
+                    "reference": "Genesis 12:1",
+                },
+                {
+                    "entity_type": "people",
+                    "entity_slug": "abraham",
+                    "reference": "Genesis 12:1",
+                },
+            ],
+            "select count(*) from entity_verse_links",
+        ),
+        (
+            "relationships.json",
+            [
+                {
+                    "source_type": "people",
+                    "source_slug": "abraham",
+                    "relation_type": "father",
+                    "target_type": "people",
+                    "target_slug": "isaac",
+                    "is_primary": True,
+                    "note": "patriarch line",
+                },
+                {
+                    "source_type": "people",
+                    "source_slug": "abraham",
+                    "relation_type": "father",
+                    "target_type": "people",
+                    "target_slug": "isaac",
+                    "is_primary": True,
+                    "note": "patriarch line",
+                },
+            ],
+            "select count(*) from entity_relationships",
+        ),
+    ],
+)
+def test_import_metadata_fixtures_rejects_duplicate_metadata_rows(
+    tmp_path: Path,
+    fixture_name: str,
+    duplicate_payload,
+    count_query: str,
+) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    _write_minimal_metadata_bundle(fixtures)
+    _write_fixture(fixtures, fixture_name, duplicate_payload)
+
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        import_metadata_fixtures(conn, fixtures_dir=fixtures)
+
+    conn.rollback()
+
+    assert conn.execute(count_query).fetchone()[0] == 0
 
 
 def test_import_metadata_fixtures_rejects_missing_alias_entity(tmp_path: Path) -> None:

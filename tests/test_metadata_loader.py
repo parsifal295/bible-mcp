@@ -32,8 +32,20 @@ def test_ensure_schema_creates_entity_relationships_table(tmp_path: Path) -> Non
     target_idx = conn.execute(
         "select name from sqlite_master where type = 'index' and name = 'idx_entity_relationships_target'"
     ).fetchone()
+    alias_unique_idx = conn.execute(
+        "select name from sqlite_master where type = 'index' and name = 'idx_entity_aliases_unique'"
+    ).fetchone()
+    verse_unique_idx = conn.execute(
+        "select name from sqlite_master where type = 'index' and name = 'idx_entity_verse_links_unique'"
+    ).fetchone()
+    relationship_unique_idx = conn.execute(
+        "select name from sqlite_master where type = 'index' and name = 'idx_entity_relationships_unique'"
+    ).fetchone()
     assert source_idx[0] == "idx_entity_relationships_source"
     assert target_idx[0] == "idx_entity_relationships_target"
+    assert alias_unique_idx[0] == "idx_entity_aliases_unique"
+    assert verse_unique_idx[0] == "idx_entity_verse_links_unique"
+    assert relationship_unique_idx[0] == "idx_entity_relationships_unique"
 
 
 def test_metadata_constants_match_contract() -> None:
