@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -11,25 +12,69 @@ class FaissChunkIndex:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.mapping_path = path.with_suffix(".json")
+        self.integrity_path = path.with_suffix(".meta.json")
         self.id_map: list[str] = []
         self.index = None
-        self._matrix: np.ndarray | None = None
+
+    @staticmethod
+    def _serialize_id_map(id_map: list[str]) -> str:
+        return json.dumps(id_map, ensure_ascii=False, separators=(",", ":"))
+
+    @classmethod
+    def _mapping_digest(cls, id_map: list[str]) -> str:
+        payload = cls._serialize_id_map(id_map).encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+
+    @staticmethod
+    def _temp_path(path: Path) -> Path:
+        return path.with_name(f"{path.name}.tmp")
+
+    @staticmethod
+    def _cleanup_paths(*paths: Path) -> None:
+        for path in paths:
+            path.unlink(missing_ok=True)
 
     def build(self, embeddings: list[tuple[str, list[float]]]) -> None:
         if not embeddings:
             raise ValueError("cannot build a FAISS index from empty embeddings")
         self.id_map = [chunk_id for chunk_id, _ in embeddings]
         matrix = np.array([vector for _, vector in embeddings], dtype="float32")
-        self.index = faiss.IndexFlatIP(matrix.shape[1])
-        self.index.add(matrix)
-        faiss.write_index(self.index, str(self.path))
+        index = faiss.IndexFlatIP(matrix.shape[1])
+        index.add(matrix)
 
-        self.mapping_path.write_text(
-            json.dumps(self.id_map, ensure_ascii=False), encoding="utf-8"
+        mapping_text = self._serialize_id_map(self.id_map)
+        integrity_text = json.dumps(
+            {
+                "mapping_sha256": self._mapping_digest(self.id_map),
+                "count": len(self.id_map),
+            },
+            ensure_ascii=False,
         )
+
+        index_tmp = self._temp_path(self.path)
+        mapping_tmp = self._temp_path(self.mapping_path)
+        integrity_tmp = self._temp_path(self.integrity_path)
+
+        try:
+            faiss.write_index(index, str(index_tmp))
+            mapping_tmp.write_text(mapping_text, encoding="utf-8")
+            integrity_tmp.write_text(integrity_text, encoding="utf-8")
+            mapping_tmp.replace(self.mapping_path)
+            integrity_tmp.replace(self.integrity_path)
+            index_tmp.replace(self.path)
+        except Exception:
+            self._cleanup_paths(index_tmp, mapping_tmp, integrity_tmp)
+            raise
+        self.index = index
 
     def load(self) -> None:
         id_map = json.loads(self.mapping_path.read_text(encoding="utf-8"))
+        integrity = json.loads(self.integrity_path.read_text(encoding="utf-8"))
+        if integrity.get("count") != len(id_map):
+            raise ValueError("FAISS mapping integrity mismatch: count does not match")
+        if integrity.get("mapping_sha256") != self._mapping_digest(id_map):
+            raise ValueError("FAISS mapping integrity mismatch: digest does not match")
+
         index = faiss.read_index(str(self.path))
         if index.ntotal != len(id_map):
             raise ValueError(

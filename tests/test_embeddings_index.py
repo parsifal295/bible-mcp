@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import sqlite3
 
@@ -72,6 +73,53 @@ def test_faiss_index_detects_stale_mapping_cardinality(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="mapping"):
         reloaded.search([1.0, 0.0], limit=1)
+
+
+def test_faiss_index_rejects_same_length_wrong_mapping(tmp_path: Path) -> None:
+    path = tmp_path / "chunks.faiss"
+    store = FaissChunkIndex(path)
+    store.build(
+        [
+            ("chunk-a", [1.0, 0.0]),
+            ("chunk-b", [0.0, 1.0]),
+        ]
+    )
+    store.mapping_path.write_text(
+        json.dumps(["chunk-x", "chunk-y"], ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    reloaded = FaissChunkIndex(path)
+
+    with pytest.raises(ValueError, match="integrity"):
+        reloaded.search([1.0, 0.0], limit=1)
+
+
+def test_faiss_index_cleans_up_if_sidecar_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "chunks.faiss"
+    store = FaissChunkIndex(path)
+    original_write_text = Path.write_text
+
+    def failing_write_text(self: Path, *args, **kwargs):
+        if self.name.endswith(".json.tmp") or self.name.endswith(".meta.json.tmp"):
+            raise RuntimeError("sidecar write failed")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", failing_write_text)
+
+    with pytest.raises(RuntimeError, match="sidecar write failed"):
+        store.build(
+            [
+                ("chunk-a", [1.0, 0.0]),
+                ("chunk-b", [0.0, 1.0]),
+            ]
+        )
+
+    assert not path.exists()
+    assert not store.mapping_path.exists()
+    assert not store.integrity_path.exists()
 
 
 def test_index_chunk_embeddings_writes_metadata_and_vectors() -> None:
