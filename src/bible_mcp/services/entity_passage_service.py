@@ -8,6 +8,16 @@ class EntityPassageService:
         self.conn = conn
         self.entity_service = entity_service
         self.passage_service = passage_service
+        self._available_tables = self._load_available_tables()
+
+    def _load_available_tables(self) -> set[str]:
+        rows = self.conn.execute(
+            "select name from sqlite_master where type = 'table'"
+        ).fetchall()
+        return {row["name"] for row in rows}
+
+    def _has_table(self, table_name: str) -> bool:
+        return table_name in self._available_tables
 
     def lookup(self, query: str, entity_type: str | None = None, limit: int = 5):
         limit = int(limit)
@@ -29,6 +39,12 @@ class EntityPassageService:
             return {"resolved_entity": None, "matches": matches, "passages": []}
 
         resolved_entity = matches[0]
+        if not self._has_table("entity_verse_links"):
+            return {
+                "resolved_entity": resolved_entity,
+                "matches": [],
+                "passages": [],
+            }
         passages = self._fetch_passages(
             entity_type=resolved_entity["entity_type"],
             entity_slug=resolved_entity["slug"],

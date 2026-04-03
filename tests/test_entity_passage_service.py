@@ -55,6 +55,32 @@ def _create_partial_entity_schema_with_links(conn) -> None:
     conn.commit()
 
 
+def _create_partial_entity_schema_without_links(conn) -> None:
+    conn.executescript(
+        """
+        create table verses (
+            id integer primary key,
+            translation text,
+            book text not null,
+            book_order integer not null,
+            chapter integer not null,
+            verse integer not null,
+            reference text not null unique,
+            testament text,
+            text text not null
+        );
+
+        create table people (
+            id integer primary key,
+            slug text not null unique,
+            display_name text not null,
+            description text
+        );
+        """
+    )
+    conn.commit()
+
+
 def _seed_verses(conn) -> None:
     conn.executemany(
         """
@@ -95,6 +121,30 @@ def test_lookup_returns_empty_result_for_missing_places_table_on_partial_schema(
 
     assert service.lookup("Jerusalem", entity_type="places") == {
         "resolved_entity": None,
+        "matches": [],
+        "passages": [],
+    }
+
+
+def test_lookup_returns_empty_passages_when_entity_verse_links_table_is_missing(tmp_path) -> None:
+    conn = connect_db(tmp_path / "app.sqlite")
+    _create_partial_entity_schema_without_links(conn)
+    service = EntityPassageService(conn, EntityService(conn), PassageService(conn))
+    _seed_verses(conn)
+    conn.execute(
+        "insert into people(slug, display_name, description) values (?, ?, ?)",
+        ("abraham", "Abraham", "patriarch"),
+    )
+    conn.commit()
+
+    assert service.lookup("Abraham", limit=1) == {
+        "resolved_entity": {
+            "entity_type": "people",
+            "slug": "abraham",
+            "display_name": "Abraham",
+            "description": "patriarch",
+            "matched_by": "display_name",
+        },
         "matches": [],
         "passages": [],
     }
