@@ -49,6 +49,8 @@ class FaissChunkIndex:
     def build(self, embeddings: list[tuple[str, list[float]]]) -> None:
         if not embeddings:
             raise ValueError("cannot build a FAISS index from empty embeddings")
+        previous_id_map = list(self.id_map)
+        previous_index = self.index
         self.id_map = [chunk_id for chunk_id, _ in embeddings]
         matrix = np.array([vector for _, vector in embeddings], dtype="float32")
         index = faiss.IndexFlatIP(matrix.shape[1])
@@ -89,6 +91,8 @@ class FaissChunkIndex:
                 self._clear_partial_publication()
             self._cleanup_paths(index_tmp, mapping_tmp, integrity_tmp)
             self._cleanup_paths(*backups.values())
+            self.id_map = previous_id_map
+            self.index = previous_index
             raise
         else:
             self._cleanup_paths(*backups.values())
