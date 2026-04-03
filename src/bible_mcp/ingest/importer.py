@@ -78,13 +78,32 @@ def _quote_identifier(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
 
 
+def _source_table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    rows = conn.execute(f"pragma table_info({_quote_identifier(table)})").fetchall()
+    return {row[1] for row in rows}
+
+
+def _book_metadata(book: str) -> tuple[int, str]:
+    if book not in BOOK_ORDER:
+        raise ValueError(f"Unknown book name: {book}")
+    book_order = BOOK_ORDER[book]
+    testament = "OT" if book_order <= 39 else "NT"
+    return book_order, testament
+
+
 def import_verses(config: AppConfig, conn: sqlite3.Connection) -> None:
     source = sqlite3.connect(config.source.path)
     source.row_factory = sqlite3.Row
     try:
+        columns = _source_table_columns(source, config.source.table)
+        translation_select = (
+            "translation"
+            if "translation" in columns
+            else "null as translation"
+        )
         rows = source.execute(
             f"""
-            select book, chapter, verse, text, translation
+            select book, chapter, verse, text, {translation_select}
             from {_quote_identifier(config.source.table)}
             order by book, chapter, verse
             """
@@ -92,37 +111,37 @@ def import_verses(config: AppConfig, conn: sqlite3.Connection) -> None:
     finally:
         source.close()
 
-    conn.execute("delete from verses")
+    with conn:
+        conn.execute("delete from verses")
 
-    for row in rows:
-        book = row["book"]
-        chapter = int(row["chapter"])
-        verse = int(row["verse"])
-        book_order = BOOK_ORDER.get(book, 999)
-        record = VerseRecord(
-            book=book,
-            chapter=chapter,
-            verse=verse,
-            reference=f"{book} {chapter}:{verse}",
-            translation=row["translation"],
-            testament="OT" if book_order <= 39 else "NT",
-            book_order=book_order,
-            text=row["text"],
-        )
-        conn.execute(
-            """
-            insert into verses(translation, book, book_order, chapter, verse, reference, testament, text)
-            values (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                record.translation,
-                record.book,
-                record.book_order,
-                record.chapter,
-                record.verse,
-                record.reference,
-                record.testament,
-                record.text,
-            ),
-        )
-    conn.commit()
+        for row in rows:
+            book = row["book"]
+            chapter = int(row["chapter"])
+            verse = int(row["verse"])
+            book_order, testament = _book_metadata(book)
+            record = VerseRecord(
+                book=book,
+                chapter=chapter,
+                verse=verse,
+                reference=f"{book} {chapter}:{verse}",
+                translation=row["translation"],
+                testament=testament,
+                book_order=book_order,
+                text=row["text"],
+            )
+            conn.execute(
+                """
+                insert into verses(translation, book, book_order, chapter, verse, reference, testament, text)
+                values (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.translation,
+                    record.book,
+                    record.book_order,
+                    record.chapter,
+                    record.verse,
+                    record.reference,
+                    record.testament,
+                    record.text,
+                ),
+            )
