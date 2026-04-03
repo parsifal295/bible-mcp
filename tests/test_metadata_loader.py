@@ -164,7 +164,12 @@ def test_default_fixture_bundle_contains_representative_people_places_events_and
     assert {"jerusalem", "bethlehem", "nazareth", "galilee", "jordan-river"} <= place_slugs
     assert {"exodus", "crucifixion", "resurrection"} <= event_slugs
     assert {alias.entity_type for alias in bundle.aliases} == {"people", "places", "events"}
-    assert {link.entity_type for link in bundle.entity_verse_links} == {"people"}
+    assert {link.entity_type for link in bundle.entity_verse_links} == {"people", "places", "events"}
+    links = {(link.entity_type, link.entity_slug, link.reference) for link in bundle.entity_verse_links}
+    assert ("places", "jerusalem", "Psalms 122:2") in links
+    assert ("places", "bethlehem", "Micah 5:2") in links
+    assert ("events", "resurrection", "Matthew 28:6") in links
+    assert ("events", "crucifixion", "Matthew 27:35") in links
     aliases = {(alias.entity_type, alias.entity_slug, alias.alias) for alias in bundle.aliases}
     assert ("people", "abraham", "Abraham") in aliases
     assert ("people", "david", "David") in aliases

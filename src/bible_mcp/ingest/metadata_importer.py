@@ -5,6 +5,7 @@ from pathlib import Path
 
 from bible_mcp.domain.metadata import ENTITY_TYPES
 from bible_mcp.metadata.loader import DEFAULT_FIXTURE_DIR, load_metadata_fixtures
+from bible_mcp.services.passage_service import PassageService
 
 
 METADATA_TABLES = (
@@ -32,8 +33,9 @@ def _require_entity(entity_lookup: dict[str, set[str]], entity_type: str, entity
         raise ValueError(f"missing {context.lower()} entity: {entity_type}/{entity_slug}")
 
 
-def _validate_bundle(bundle) -> None:
+def _validate_bundle(conn: sqlite3.Connection, bundle) -> None:
     entity_lookup = _entity_lookup(bundle)
+    passage_service = PassageService(conn)
 
     for alias in bundle.aliases:
         _require_entity(
@@ -50,6 +52,10 @@ def _validate_bundle(bundle) -> None:
             link.entity_slug,
             "Entity verse link",
         )
+        try:
+            passage_service.lookup(link.reference)
+        except (LookupError, ValueError) as exc:
+            raise type(exc)(f"Entity verse link reference: {exc}") from exc
 
     for relationship in bundle.relationships:
         _require_entity(
@@ -83,7 +89,7 @@ def import_metadata_fixtures(
     transaction.
     """
     bundle = load_metadata_fixtures(fixtures_dir)
-    _validate_bundle(bundle)
+    _validate_bundle(conn, bundle)
 
     conn.execute("savepoint metadata_import")
     try:

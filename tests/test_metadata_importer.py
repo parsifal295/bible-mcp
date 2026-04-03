@@ -16,12 +16,66 @@ def _write_fixture(path: Path, name: str, payload) -> None:
     )
 
 
+def _seed_verses(conn: sqlite3.Connection, rows: list[tuple[str, str, int, int, int, str, str, str]]) -> None:
+    conn.executemany(
+        """
+        insert into verses(translation, book, book_order, chapter, verse, reference, testament, text)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+    conn.commit()
+
+
+def _seed_minimal_bundle_verse(conn: sqlite3.Connection) -> None:
+    _seed_verses(
+        conn,
+        [
+            (
+                "KRV",
+                "Genesis",
+                1,
+                12,
+                1,
+                "Genesis 12:1",
+                "OT",
+                "Now the LORD had said unto Abram.",
+            )
+        ],
+    )
+
+
+def _seed_default_bundle_verses(conn: sqlite3.Connection) -> None:
+    _seed_verses(
+        conn,
+        [
+            ("KRV", "Genesis", 1, 12, 1, "Genesis 12:1", "OT", "Now the LORD had said unto Abram."),
+            ("KRV", "Genesis", 1, 21, 3, "Genesis 21:3", "OT", "And Abraham called his son's name that was born unto him, whom Sarah bare to him, Isaac."),
+            ("KRV", "Genesis", 1, 25, 26, "Genesis 25:26", "OT", "And after that came his brother out, and his hand took hold on Esau's heel; and his name was called Jacob."),
+            ("KRV", "1 Samuel", 9, 16, 1, "1 Samuel 16:1", "OT", "And the LORD said unto Samuel, How long wilt thou mourn for Saul, seeing I have rejected him?"),
+            ("KRV", "1 Samuel", 9, 16, 13, "1 Samuel 16:13", "OT", "Then Samuel took the horn of oil, and anointed him in the midst of his brethren."),
+            ("KRV", "Matthew", 40, 1, 21, "Matthew 1:21", "NT", "And she shall bring forth a son, and thou shalt call his name JESUS."),
+            ("KRV", "Matthew", 40, 4, 18, "Matthew 4:18", "NT", "Jesus, walking by the sea of Galilee, saw two brethren, Simon called Peter."),
+            ("KRV", "Matthew", 40, 4, 21, "Matthew 4:21", "NT", "And going on from thence, he saw other two brethren, James the son of Zebedee, and John his brother."),
+            ("KRV", "Psalms", 19, 122, 2, "Psalms 122:2", "OT", "Our feet shall stand within thy gates, O Jerusalem."),
+            ("KRV", "Micah", 33, 5, 2, "Micah 5:2", "OT", "But thou, Bethlehem Ephratah, though thou be little among the thousands of Judah."),
+            ("KRV", "Matthew", 40, 2, 23, "Matthew 2:23", "NT", "And he came and dwelt in a city called Nazareth."),
+            ("KRV", "Matthew", 40, 4, 15, "Matthew 4:15", "NT", "The land of Zebulun, and the land of Naphtali, by the way of the sea, beyond Jordan, Galilee of the Gentiles."),
+            ("KRV", "Matthew", 40, 3, 13, "Matthew 3:13", "NT", "Then cometh Jesus from Galilee to Jordan unto John, to be baptized of him."),
+            ("KRV", "Exodus", 2, 12, 41, "Exodus 12:41", "OT", "And it came to pass at the end of the four hundred and thirty years."),
+            ("KRV", "Matthew", 40, 27, 35, "Matthew 27:35", "NT", "And they crucified him, and parted his garments."),
+            ("KRV", "Matthew", 40, 28, 6, "Matthew 28:6", "NT", "He is not here: for he is risen, as he said."),
+        ],
+    )
+
+
 def _write_minimal_metadata_bundle(
     fixtures: Path,
     *,
     alias_slug: str = "abraham",
     relationship_target: str = "isaac",
     relation_type: str = "father",
+    verse_reference: str = "Genesis 12:1",
 ) -> None:
     _write_fixture(
         fixtures,
@@ -62,7 +116,7 @@ def _write_minimal_metadata_bundle(
     _write_fixture(
         fixtures,
         "entity_verse_links.json",
-        [{"entity_type": "people", "entity_slug": "abraham", "reference": "Genesis 12:1"}],
+        [{"entity_type": "people", "entity_slug": "abraham", "reference": verse_reference}],
     )
     _write_fixture(
         fixtures,
@@ -88,6 +142,7 @@ def test_import_metadata_fixtures_populates_people_aliases_and_relationships(tmp
 
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
+    _seed_minimal_bundle_verse(conn)
 
     import_metadata_fixtures(conn, fixtures_dir=fixtures)
 
@@ -120,6 +175,7 @@ def test_import_metadata_fixtures_populates_people_aliases_and_relationships(tmp
 def test_import_metadata_fixtures_imports_default_bundle_places_and_events(tmp_path: Path) -> None:
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
+    _seed_default_bundle_verses(conn)
 
     import_metadata_fixtures(conn)
 
@@ -143,6 +199,7 @@ def test_import_metadata_fixtures_replaces_existing_rows_on_rebuild(tmp_path: Pa
 
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
+    _seed_minimal_bundle_verse(conn)
 
     import_metadata_fixtures(conn, fixtures_dir=fixtures)
     conn.execute(
@@ -186,6 +243,7 @@ def test_import_metadata_fixtures_participates_in_caller_owned_transaction(tmp_p
 
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
+    _seed_minimal_bundle_verse(conn)
     conn.execute("create table audit_log(message text not null)")
     conn.commit()
 
@@ -270,6 +328,7 @@ def test_import_metadata_fixtures_rejects_duplicate_metadata_rows(
 
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
+    _seed_minimal_bundle_verse(conn)
 
     with pytest.raises(sqlite3.IntegrityError):
         import_metadata_fixtures(conn, fixtures_dir=fixtures)
@@ -296,6 +355,7 @@ def test_import_metadata_fixtures_rolls_back_partial_changes_on_failure_without_
 
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
+    _seed_minimal_bundle_verse(conn)
 
     with pytest.raises(sqlite3.IntegrityError):
         import_metadata_fixtures(conn, fixtures_dir=fixtures)
@@ -311,6 +371,7 @@ def test_import_metadata_fixtures_rejects_missing_alias_entity(tmp_path: Path) -
 
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
+    _seed_minimal_bundle_verse(conn)
 
     with pytest.raises(ValueError, match="missing.*alias"):
         import_metadata_fixtures(conn, fixtures_dir=fixtures)
@@ -323,6 +384,7 @@ def test_import_metadata_fixtures_rejects_unknown_relation_type(tmp_path: Path) 
 
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
+    _seed_minimal_bundle_verse(conn)
 
     with pytest.raises(ValueError, match="grandfather"):
         import_metadata_fixtures(conn, fixtures_dir=fixtures)
@@ -335,6 +397,20 @@ def test_import_metadata_fixtures_rejects_missing_relationship_endpoint(tmp_path
 
     conn = connect_db(tmp_path / "app.sqlite")
     ensure_schema(conn)
+    _seed_minimal_bundle_verse(conn)
 
     with pytest.raises(ValueError, match="missing.*relationship"):
+        import_metadata_fixtures(conn, fixtures_dir=fixtures)
+
+
+def test_import_metadata_fixtures_rejects_unresolvable_entity_verse_reference(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    _write_minimal_metadata_bundle(fixtures, verse_reference="Genesis 99:99")
+
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+    _seed_minimal_bundle_verse(conn)
+
+    with pytest.raises(LookupError, match="Entity verse link reference"):
         import_metadata_fixtures(conn, fixtures_dir=fixtures)

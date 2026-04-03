@@ -38,5 +38,45 @@
     "entity_type": "people",
     "entity_slug": "john",
     "reference": "Matthew 4:21"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "jerusalem",
+    "reference": "Psalms 122:2"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "bethlehem",
+    "reference": "Micah 5:2"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "nazareth",
+    "reference": "Matthew 2:23"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "galilee",
+    "reference": "Matthew 4:15"
+  },
+  {
+    "entity_type": "places",
+    "entity_slug": "jordan-river",
+    "reference": "Matthew 3:13"
+  },
+  {
+    "entity_type": "events",
+    "entity_slug": "exodus",
+    "reference": "Exodus 12:41"
+  },
+  {
+    "entity_type": "events",
+    "entity_slug": "crucifixion",
+    "reference": "Matthew 27:35"
+  },
+  {
+    "entity_type": "events",
+    "entity_slug": "resurrection",
+    "reference": "Matthew 28:6"
   }
 ]
