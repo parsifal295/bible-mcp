@@ -1,4 +1,4 @@
-# bible-mcp
+## bible-mcp
 
 Local-first Korean Bible MCP server.
 
