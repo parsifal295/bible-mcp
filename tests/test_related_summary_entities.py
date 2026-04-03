@@ -8,6 +8,7 @@ from bible_mcp.cli import app
 from bible_mcp.config import AppConfig, SourceBibleConfig
 from bible_mcp.mcp_server import build_tool_handlers
 from bible_mcp.mcp_server import create_mcp_server
+from bible_mcp.services.entity_query_router import EntityQueryRouter
 from bible_mcp.services.related_service import RelatedPassageService
 from bible_mcp.services.entity_service import EntityService
 from bible_mcp.services.entity_passage_service import EntityPassageService
@@ -172,12 +173,14 @@ def test_serve_omits_optional_tools_when_entity_tables_are_missing(
         entity_service,
         relation_service,
         entity_passage_service,
+        entity_query_router,
     ):
         captured["related_service"] = related_service
         captured["summarizer"] = summarizer
         captured["entity_service"] = entity_service
         captured["relation_service"] = relation_service
         captured["entity_passage_service"] = entity_passage_service
+        captured["entity_query_router"] = entity_query_router
 
         class FakeServer:
             def run(self):
@@ -198,6 +201,7 @@ def test_serve_omits_optional_tools_when_entity_tables_are_missing(
     assert captured["entity_service"] is None
     assert captured["relation_service"] is None
     assert captured["entity_passage_service"] is None
+    assert captured["entity_query_router"] is None
 
 
 def test_serve_omits_entity_passage_service_when_entity_verse_links_are_missing(
@@ -229,12 +233,14 @@ def test_serve_omits_entity_passage_service_when_entity_verse_links_are_missing(
         entity_service,
         relation_service,
         entity_passage_service,
+        entity_query_router,
     ):
         captured["related_service"] = related_service
         captured["summarizer"] = summarizer
         captured["entity_service"] = entity_service
         captured["relation_service"] = relation_service
         captured["entity_passage_service"] = entity_passage_service
+        captured["entity_query_router"] = entity_query_router
 
         class FakeServer:
             def run(self):
@@ -255,6 +261,7 @@ def test_serve_omits_entity_passage_service_when_entity_verse_links_are_missing(
     assert isinstance(captured["entity_service"], EntityService)
     assert captured["relation_service"] is None
     assert captured["entity_passage_service"] is None
+    assert isinstance(captured["entity_query_router"], EntityQueryRouter)
 
 
 def test_serve_wires_relation_lookup_service_when_optional_tables_are_present(
@@ -291,12 +298,14 @@ def test_serve_wires_relation_lookup_service_when_optional_tables_are_present(
         entity_service,
         relation_service,
         entity_passage_service,
+        entity_query_router,
     ):
         captured["related_service"] = related_service
         captured["summarizer"] = summarizer
         captured["entity_service"] = entity_service
         captured["relation_service"] = relation_service
         captured["entity_passage_service"] = entity_passage_service
+        captured["entity_query_router"] = entity_query_router
 
         class FakeServer:
             def run(self):
@@ -317,6 +326,7 @@ def test_serve_wires_relation_lookup_service_when_optional_tables_are_present(
     assert isinstance(captured["entity_service"], EntityService)
     assert isinstance(captured["relation_service"], RelationLookupService)
     assert isinstance(captured["entity_passage_service"], EntityPassageService)
+    assert isinstance(captured["entity_query_router"], EntityQueryRouter)
 
 
 def test_create_mcp_server_registers_optional_tools_when_collaborators_are_present() -> None:
@@ -359,6 +369,10 @@ def test_create_mcp_server_registers_optional_tools_when_collaborators_are_prese
         ):
             return {"resolved_entity": None, "matches": [], "relations": []}
 
+    class FakeEntityQueryRouter:
+        def route(self, query: str, limit: int = 5):
+            return {"intent": "entity_search", "parsed": {"query": query}, "result": {"results": []}, "error": None}
+
     mcp = create_mcp_server(
         FakeSearchService(),
         FakePassageService(),
@@ -367,6 +381,7 @@ def test_create_mcp_server_registers_optional_tools_when_collaborators_are_prese
         FakeEntityService(),
         FakeRelationService(),
         FakeEntityPassageService(),
+        FakeEntityQueryRouter(),
     )
     tools = asyncio.run(mcp.list_tools())
 
@@ -379,6 +394,7 @@ def test_create_mcp_server_registers_optional_tools_when_collaborators_are_prese
         "search_entities",
         "get_entity_relations",
         "get_entity_passages",
+        "route_entity_query",
     }
 
 
@@ -407,6 +423,23 @@ def test_create_mcp_server_registers_entity_search_without_relation_lookup() -> 
         ):
             return {"resolved_entity": None, "matches": [], "passages": []}
 
+    class FakeEntityQueryRouter:
+        def route(self, query: str, limit: int = 5):
+            return {
+                "intent": "entity_search",
+                "parsed": {
+                    "original_query": query,
+                    "normalized_query": query,
+                    "entity_text": query,
+                    "entity_type": None,
+                    "relation_type": None,
+                    "direction": None,
+                    "target_tool": "search_entities",
+                },
+                "result": {"results": []},
+                "error": None,
+            }
+
     mcp = create_mcp_server(
         FakeSearchService(),
         FakePassageService(),
@@ -415,6 +448,7 @@ def test_create_mcp_server_registers_entity_search_without_relation_lookup() -> 
         FakeEntityService(),
         None,
         FakeEntityPassageService(),
+        FakeEntityQueryRouter(),
     )
     tools = asyncio.run(mcp.list_tools())
 
@@ -424,6 +458,7 @@ def test_create_mcp_server_registers_entity_search_without_relation_lookup() -> 
         "expand_context",
         "search_entities",
         "get_entity_passages",
+        "route_entity_query",
     }
 
 

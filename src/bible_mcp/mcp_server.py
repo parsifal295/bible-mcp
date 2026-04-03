@@ -56,6 +56,7 @@ def build_tool_handlers(
     entity_service,
     relation_service=None,
     entity_passage_service=None,
+    entity_query_router=None,
 ):
     def search_bible(payload: dict):
         query = _require_text(payload["query"], "query")
@@ -115,6 +116,11 @@ def build_tool_handlers(
             limit=limit,
         )
 
+    def route_entity_query(payload: dict):
+        query = _require_text(payload["query"], "query")
+        limit = _require_limit(payload.get("limit", 5))
+        return entity_query_router.route(query, limit=limit)
+
     handlers = {
         "search_bible": search_bible,
         "lookup_passage": lookup_passage,
@@ -136,6 +142,9 @@ def build_tool_handlers(
     if entity_passage_service is not None:
         handlers["get_entity_passages"] = get_entity_passages
 
+    if entity_query_router is not None:
+        handlers["route_entity_query"] = route_entity_query
+
     return handlers
 
 
@@ -147,16 +156,18 @@ def create_mcp_server(
     entity_service,
     relation_service=None,
     entity_passage_service=None,
+    entity_query_router=None,
 ):
     mcp = FastMCP("bible-mcp")
     handlers = build_tool_handlers(
-        search_service,
-        passage_service,
-        related_service,
-        summarizer,
-        entity_service,
-        relation_service,
-        entity_passage_service,
+        search_service=search_service,
+        passage_service=passage_service,
+        related_service=related_service,
+        summarizer=summarizer,
+        entity_service=entity_service,
+        relation_service=relation_service,
+        entity_passage_service=entity_passage_service,
+        entity_query_router=entity_query_router,
     )
 
     @mcp.tool()
@@ -234,5 +245,11 @@ def create_mcp_server(
                     "limit": limit,
                 }
             )
+
+    if "route_entity_query" in handlers:
+
+        @mcp.tool()
+        def route_entity_query(query: str, limit: int = 5):
+            return handlers["route_entity_query"]({"query": query, "limit": limit})
 
     return mcp

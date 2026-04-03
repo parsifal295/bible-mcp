@@ -13,9 +13,11 @@ from bible_mcp.db.schema import ensure_schema
 from bible_mcp.index.faiss_store import FaissChunkIndex
 from bible_mcp.mcp_server import build_tool_handlers, create_mcp_server
 from bible_mcp.ingest.metadata_importer import import_metadata_fixtures
+from bible_mcp.services.entity_query_router import EntityQueryRouter
 from bible_mcp.services.entity_service import EntityService
 from bible_mcp.services.entity_passage_service import EntityPassageService
 from bible_mcp.services.passage_service import PassageService
+from bible_mcp.services.relation_service import RelationLookupService
 
 
 class FakeSearchService:
@@ -86,6 +88,36 @@ class FakeEntityPassageService:
             "resolved_entity": {"display_name": "예루살렘", "entity_type": "places", "slug": "jerusalem"},
             "matches": [],
             "passages": [{"reference": "Psalms 122:2", "passage_text": "Our feet shall stand within thy gates, O Jerusalem."}],
+        }
+
+
+class FakeEntityQueryRouter:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def route(self, query: str, limit: int = 5):
+        self.calls.append({"query": query, "limit": limit})
+        return {
+            "intent": "entity_search",
+            "parsed": {
+                "original_query": query,
+                "normalized_query": query,
+                "entity_text": query,
+                "entity_type": None,
+                "relation_type": None,
+                "direction": None,
+                "target_tool": "search_entities",
+            },
+            "result": {
+                "results": [
+                    {
+                        "entity_type": "people",
+                        "slug": "abraham",
+                        "display_name": "아브라함",
+                    }
+                ]
+            },
+            "error": None,
         }
 
 
@@ -459,6 +491,89 @@ def test_get_entity_relations_handler_rejects_invalid_direction() -> None:
         handlers["get_entity_relations"]({"query": "아브라함", "direction": "sideways"})
 
 
+def test_route_entity_query_handler_trims_query_and_forwards_limit() -> None:
+    entity_query_router = FakeEntityQueryRouter()
+    handlers = build_tool_handlers(
+        search_service=FakeSearchService(),
+        passage_service=FakePassageService(),
+        related_service=None,
+        summarizer=Mock(),
+        entity_service=FakeEntityService(),
+        relation_service=None,
+        entity_passage_service=None,
+        entity_query_router=entity_query_router,
+    )
+
+    result = handlers["route_entity_query"]({"query": " 예수의 제자들 ", "limit": 2})
+
+    assert entity_query_router.calls == [{"query": "예수의 제자들", "limit": 2}]
+    assert result["intent"] == "entity_search"
+    assert result["result"]["results"][0]["slug"] == "abraham"
+
+
+def test_route_entity_query_handler_rejects_invalid_limit() -> None:
+    handlers = build_tool_handlers(
+        search_service=FakeSearchService(),
+        passage_service=FakePassageService(),
+        related_service=None,
+        summarizer=Mock(),
+        entity_service=FakeEntityService(),
+        relation_service=None,
+        entity_passage_service=None,
+        entity_query_router=FakeEntityQueryRouter(),
+    )
+
+    with pytest.raises(ValueError, match="limit must be at least 1"):
+        handlers["route_entity_query"]({"query": "예수의 제자들", "limit": 0})
+
+
+def test_route_entity_query_handler_routes_relation_and_passage_queries_with_real_services(
+    tmp_path: Path,
+) -> None:
+    conn = connect_db(tmp_path / "app.sqlite")
+    ensure_schema(conn)
+    _seed_default_bundle_verses(conn)
+    import_metadata_fixtures(conn)
+
+    entity_service = EntityService(conn)
+    relation_service = RelationLookupService(conn, entity_service)
+    entity_passage_service = EntityPassageService(conn, entity_service, PassageService(conn))
+    router = EntityQueryRouter(
+        entity_service,
+        relation_service=relation_service,
+        entity_passage_service=entity_passage_service,
+    )
+    handlers = build_tool_handlers(
+        search_service=FakeSearchService(),
+        passage_service=FakePassageService(),
+        related_service=None,
+        summarizer=None,
+        entity_service=entity_service,
+        relation_service=relation_service,
+        entity_passage_service=entity_passage_service,
+        entity_query_router=router,
+    )
+
+    relation_result = handlers["route_entity_query"]({"query": "예수의 제자들", "limit": 5})
+    passage_result = handlers["route_entity_query"]({"query": "예루살렘 대표 구절", "limit": 1})
+
+    assert relation_result["intent"] == "relations"
+    assert relation_result["parsed"]["relation_type"] == "disciple_of"
+    assert relation_result["parsed"]["direction"] == "incoming"
+    assert {row["slug"] for row in relation_result["result"]["relations"]} == {
+        "john",
+        "peter",
+    }
+    assert passage_result["intent"] == "passages"
+    assert passage_result["parsed"]["entity_type"] == "places"
+    assert passage_result["result"]["passages"] == [
+        {
+            "reference": "Psalms 122:2",
+            "passage_text": "Our feet shall stand within thy gates, O Jerusalem.",
+        }
+    ]
+
+
 def test_create_mcp_server_registers_expected_tools() -> None:
     mcp = create_mcp_server(FakeSearchService(), FakePassageService(), None, None, None, None)
     tools = asyncio.run(mcp.list_tools())
@@ -496,6 +611,45 @@ def test_create_mcp_server_registers_entity_passages_when_service_is_present() -
         "lookup_passage",
         "expand_context",
         "get_entity_passages",
+    }
+
+
+def test_create_mcp_server_registers_route_entity_query_when_router_is_present() -> None:
+    class FakeEntityQueryRouter:
+        def route(self, query: str, limit: int = 5):
+            return {
+                "intent": "entity_search",
+                "parsed": {
+                    "original_query": query,
+                    "normalized_query": query,
+                    "entity_text": query,
+                    "entity_type": None,
+                    "relation_type": None,
+                    "direction": None,
+                    "target_tool": "search_entities",
+                },
+                "result": {"results": []},
+                "error": None,
+            }
+
+    mcp = create_mcp_server(
+        search_service=FakeSearchService(),
+        passage_service=FakePassageService(),
+        related_service=None,
+        summarizer=None,
+        entity_service=FakeEntityService(),
+        relation_service=None,
+        entity_passage_service=None,
+        entity_query_router=FakeEntityQueryRouter(),
+    )
+    tools = asyncio.run(mcp.list_tools())
+
+    assert {tool.name for tool in tools} == {
+        "search_bible",
+        "lookup_passage",
+        "expand_context",
+        "search_entities",
+        "route_entity_query",
     }
 
 

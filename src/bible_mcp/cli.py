@@ -15,6 +15,7 @@ from bible_mcp.ingest.importer import import_verses
 from bible_mcp.ingest.metadata_importer import import_metadata_fixtures
 from bible_mcp.ingest.source_db import SourceSchemaError, validate_source_database
 from bible_mcp.mcp_server import create_mcp_server
+from bible_mcp.services.entity_query_router import EntityQueryRouter
 from bible_mcp.services.entity_service import EntityService
 from bible_mcp.services.entity_passage_service import EntityPassageService
 from bible_mcp.services.related_service import RelatedPassageService
@@ -164,28 +165,34 @@ def serve() -> None:
             relation_service = None
             if _app_db_supports_relation_tools(config):
                 relation_service = RelationLookupService(conn, entity_service)
+            entity_passage_service = None
             if _app_db_supports_entity_passage_tools(config):
                 entity_passage_service = EntityPassageService(
                     conn,
                     entity_service,
                     passage_service,
                 )
-            else:
-                entity_passage_service = None
+            entity_query_router = EntityQueryRouter(
+                entity_service,
+                relation_service=relation_service,
+                entity_passage_service=entity_passage_service,
+            )
         else:
             related_service = None
             entity_service = None
             entity_passage_service = None
             summarizer = None
             relation_service = None
+            entity_query_router = None
         create_mcp_server(
-            search_service,
-            passage_service,
-            related_service,
-            summarizer,
-            entity_service,
-            relation_service,
-            entity_passage_service,
+            search_service=search_service,
+            passage_service=passage_service,
+            related_service=related_service,
+            summarizer=summarizer,
+            entity_service=entity_service,
+            relation_service=relation_service,
+            entity_passage_service=entity_passage_service,
+            entity_query_router=entity_query_router,
         ).run()
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         typer.echo(str(exc))
