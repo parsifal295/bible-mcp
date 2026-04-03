@@ -22,6 +22,7 @@ from bible_mcp.services.summarizer import summarize_passage_text
 
 app = typer.Typer(help="Korean Bible MCP server")
 REQUIRED_APP_DB_TABLES = ("verses", "passage_chunks", "passage_chunks_fts")
+OPTIONAL_STUDY_DB_TABLES = ("people", "entity_aliases")
 
 
 def load_config() -> AppConfig:
@@ -74,6 +75,23 @@ def validate_runtime_installation(config: AppConfig) -> FaissChunkIndex:
     return vector_store
 
 
+def _app_db_supports_optional_study_tools(config: AppConfig) -> bool:
+    conn = sqlite3.connect(f"file:{config.app_db_path}?mode=ro", uri=True)
+    try:
+        for table in OPTIONAL_STUDY_DB_TABLES:
+            if (
+                conn.execute(
+                    "select 1 from sqlite_master where type = 'table' and name = ?",
+                    (table,),
+                ).fetchone()
+                is None
+            ):
+                return False
+    finally:
+        conn.close()
+    return True
+
+
 @app.command()
 def index() -> None:
     config = load_config()
@@ -98,13 +116,19 @@ def serve() -> None:
         embedder = SentenceTransformerEmbedder(config.embeddings.model_name)
         search_service = SearchService(conn, embedder, vector_store)
         passage_service = PassageService(conn)
-        related_service = RelatedPassageService(conn, embedder, vector_store)
-        entity_service = EntityService(conn)
+        if _app_db_supports_optional_study_tools(config):
+            related_service = RelatedPassageService(conn, embedder, vector_store)
+            entity_service = EntityService(conn)
+            summarizer = summarize_passage_text
+        else:
+            related_service = None
+            entity_service = None
+            summarizer = None
         create_mcp_server(
             search_service,
             passage_service,
             related_service,
-            summarize_passage_text,
+            summarizer,
             entity_service,
         ).run()
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
