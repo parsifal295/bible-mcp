@@ -4,6 +4,7 @@ import pytest
 
 from bible_mcp.db.connection import connect_db
 from bible_mcp.db.schema import ensure_schema
+from bible_mcp.ingest.metadata_importer import import_metadata_fixtures
 from bible_mcp.services.entity_service import EntityService
 
 
@@ -133,3 +134,32 @@ def test_search_rejects_limit_below_one(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="limit must be at least 1"):
         service.search("Saul", limit=0)
+
+
+@pytest.mark.parametrize(
+    ("query", "slug", "display_name", "description"),
+    [
+        ("Abraham", "abraham", "아브라함", "믿음의 조상으로 불린 족장"),
+        ("David", "david", "다윗", "이스라엘 왕"),
+        ("Jesus", "jesus", "예수", "신약의 중심 인물"),
+    ],
+)
+def test_search_resolves_english_aliases_from_default_fixture_bundle(
+    tmp_path,
+    query: str,
+    slug: str,
+    display_name: str,
+    description: str,
+) -> None:
+    conn, service = _build_service(tmp_path)
+    import_metadata_fixtures(conn)
+
+    assert service.search(query, entity_type="people", limit=1) == [
+        {
+            "entity_type": "people",
+            "slug": slug,
+            "display_name": display_name,
+            "description": description,
+            "matched_by": "alias",
+        }
+    ]

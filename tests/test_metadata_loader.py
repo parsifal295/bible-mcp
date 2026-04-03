@@ -5,8 +5,8 @@ import pytest
 
 from bible_mcp.db.connection import connect_db
 from bible_mcp.db.schema import ensure_schema
+from bible_mcp.domain.metadata import ENTITY_TYPES, RELATION_DIRECTIONS, RELATION_TYPES
 from bible_mcp.metadata.loader import DEFAULT_FIXTURE_DIR, load_metadata_fixtures
-from bible_mcp.metadata.models import ENTITY_TYPES, RELATION_TYPES
 
 
 def _write_fixture(path: Path, name: str, payload) -> None:
@@ -50,6 +50,7 @@ def test_ensure_schema_creates_entity_relationships_table(tmp_path: Path) -> Non
 
 def test_metadata_constants_match_contract() -> None:
     assert ENTITY_TYPES == {"people", "places", "events"}
+    assert RELATION_DIRECTIONS == ("incoming", "outgoing")
     assert RELATION_TYPES == {
         "father",
         "mother",
@@ -158,6 +159,14 @@ def test_default_fixture_bundle_contains_representative_people_and_relationships
     bundle = load_metadata_fixtures()
     people_slugs = {person.slug for person in bundle.people}
     assert {"abraham", "isaac", "jacob", "jesse", "david", "jesus", "peter", "john"} <= people_slugs
+    assert bundle.places == []
+    assert bundle.events == []
+    assert {alias.entity_type for alias in bundle.aliases} == {"people"}
+    assert {link.entity_type for link in bundle.entity_verse_links} == {"people"}
+    aliases = {(alias.entity_slug, alias.alias) for alias in bundle.aliases}
+    assert ("abraham", "Abraham") in aliases
+    assert ("david", "David") in aliases
+    assert ("jesus", "Jesus") in aliases
 
     relation_pairs = {
         (row.source_slug, row.relation_type, row.target_slug)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from bible_mcp.domain.metadata import DEFAULT_RELATION_DIRECTION, RELATION_DIRECTIONS
+
 
 class RelationLookupService:
     def __init__(self, conn, entity_service) -> None:
@@ -11,15 +13,15 @@ class RelationLookupService:
         query: str,
         relation_type: str | None = None,
         entity_type: str | None = None,
-        direction: str = "outgoing",
+        direction: str = DEFAULT_RELATION_DIRECTION,
         limit: int = 5,
     ):
         limit = int(limit)
         if limit < 1:
             raise ValueError("limit must be at least 1")
 
-        if direction not in {"outgoing", "incoming"}:
-            raise ValueError("direction must be 'outgoing' or 'incoming'")
+        if direction not in RELATION_DIRECTIONS:
+            raise ValueError("direction must be 'incoming' or 'outgoing'")
 
         if entity_type is None:
             entity_type = "people"
@@ -62,7 +64,7 @@ class RelationLookupService:
             relation_filter = "and er.relation_type = ?"
             params.append(relation_type)
 
-        if direction == "outgoing":
+        if direction == DEFAULT_RELATION_DIRECTION:
             sql = f"""
                 select
                     distinct

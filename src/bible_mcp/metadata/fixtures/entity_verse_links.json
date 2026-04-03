@@ -38,20 +38,5 @@
     "entity_type": "people",
     "entity_slug": "john",
     "reference": "Matthew 4:21"
-  },
-  {
-    "entity_type": "places",
-    "entity_slug": "bethlehem",
-    "reference": "Matthew 2:1"
-  },
-  {
-    "entity_type": "places",
-    "entity_slug": "jerusalem",
-    "reference": "Psalm 122:6"
-  },
-  {
-    "entity_type": "events",
-    "entity_slug": "resurrection",
-    "reference": "Matthew 28:6"
   }
 ]

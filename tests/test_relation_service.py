@@ -241,7 +241,7 @@ def test_lookup_returns_incoming_relations_for_a_unique_entity(tmp_path) -> None
 def test_lookup_rejects_unknown_direction(tmp_path) -> None:
     _, service = _build_service(tmp_path)
 
-    with pytest.raises(ValueError, match="direction must be 'outgoing' or 'incoming'"):
+    with pytest.raises(ValueError, match="direction must be 'incoming' or 'outgoing'"):
         service.lookup("Abraham", direction="sideways")
 
 

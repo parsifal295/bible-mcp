@@ -1,5 +1,7 @@
 from mcp.server.fastmcp import FastMCP
 
+from bible_mcp.domain.metadata import DEFAULT_RELATION_DIRECTION, RELATION_DIRECTIONS
+
 
 def _to_payload(value):
     if hasattr(value, "__dict__"):
@@ -41,7 +43,7 @@ def _require_window(value) -> int:
 
 def _require_direction(value, field_name: str = "direction") -> str:
     direction = _require_text(value, field_name)
-    if direction not in {"incoming", "outgoing"}:
+    if direction not in RELATION_DIRECTIONS:
         raise ValueError(f"{field_name} must be 'incoming' or 'outgoing'")
     return direction
 
@@ -92,7 +94,7 @@ def build_tool_handlers(
         query = _require_text(payload["query"], "query")
         relation_type = _optional_text(payload.get("relation_type"))
         entity_type = _optional_text(payload.get("entity_type"))
-        direction = _require_direction(payload.get("direction", "outgoing"))
+        direction = _require_direction(payload.get("direction", DEFAULT_RELATION_DIRECTION))
         limit = _require_limit(payload.get("limit", 5))
         return relation_service.lookup(
             query,
@@ -188,7 +190,7 @@ def create_mcp_server(
             query: str,
             relation_type: str | None = None,
             entity_type: str | None = None,
-            direction: str = "outgoing",
+            direction: str = DEFAULT_RELATION_DIRECTION,
             limit: int = 5,
         ):
             return handlers["get_entity_relations"](
