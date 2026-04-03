@@ -25,11 +25,37 @@ def build_tool_handlers(search_service, passage_service, related_service, summar
         result = passage_service.expand_context(reference, window=window)
         return _to_payload(result)
 
-    return {
+    def suggest_related_passages(payload: dict):
+        source_text = payload["text"]
+        limit = int(payload.get("limit", 5))
+        results = related_service.suggest(source_text, limit=limit)
+        return {"results": [_to_payload(result) for result in results]}
+
+    def summarize_passage(payload: dict):
+        text = payload["text"]
+        return summarizer(text)
+
+    def search_entities(payload: dict):
+        query = payload["query"]
+        results = entity_service.search(query)
+        return {"results": [_to_payload(result) for result in results]}
+
+    handlers = {
         "search_bible": search_bible,
         "lookup_passage": lookup_passage,
         "expand_context": expand_context,
     }
+
+    if related_service is not None and summarizer is not None and entity_service is not None:
+        handlers.update(
+            {
+                "suggest_related_passages": suggest_related_passages,
+                "summarize_passage": summarize_passage,
+                "search_entities": search_entities,
+            }
+        )
+
+    return handlers
 
 
 def create_mcp_server(search_service, passage_service, related_service, summarizer, entity_service):
@@ -47,5 +73,19 @@ def create_mcp_server(search_service, passage_service, related_service, summariz
     @mcp.tool()
     def expand_context(reference: str, window: int = 2):
         return handlers["expand_context"]({"reference": reference, "window": window})
+
+    if "suggest_related_passages" in handlers and "summarize_passage" in handlers and "search_entities" in handlers:
+
+        @mcp.tool()
+        def suggest_related_passages(text: str, limit: int = 5):
+            return handlers["suggest_related_passages"]({"text": text, "limit": limit})
+
+        @mcp.tool()
+        def summarize_passage(text: str):
+            return handlers["summarize_passage"]({"text": text})
+
+        @mcp.tool()
+        def search_entities(query: str):
+            return handlers["search_entities"]({"query": query})
 
     return mcp

@@ -14,8 +14,11 @@ from bible_mcp.ingest.chunker import build_chunks
 from bible_mcp.ingest.importer import import_verses
 from bible_mcp.ingest.source_db import SourceSchemaError, validate_source_database
 from bible_mcp.mcp_server import create_mcp_server
+from bible_mcp.services.entity_service import EntityService
+from bible_mcp.services.related_service import RelatedPassageService
 from bible_mcp.services.passage_service import PassageService
 from bible_mcp.services.search_service import SearchService
+from bible_mcp.services.summarizer import summarize_passage_text
 
 app = typer.Typer(help="Korean Bible MCP server")
 REQUIRED_APP_DB_TABLES = ("verses", "passage_chunks", "passage_chunks_fts")
@@ -95,7 +98,15 @@ def serve() -> None:
         embedder = SentenceTransformerEmbedder(config.embeddings.model_name)
         search_service = SearchService(conn, embedder, vector_store)
         passage_service = PassageService(conn)
-        create_mcp_server(search_service, passage_service, None, None, None).run()
+        related_service = RelatedPassageService(conn, embedder, vector_store)
+        entity_service = EntityService(conn)
+        create_mcp_server(
+            search_service,
+            passage_service,
+            related_service,
+            summarize_passage_text,
+            entity_service,
+        ).run()
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         typer.echo(str(exc))
         raise typer.Exit(code=1)
