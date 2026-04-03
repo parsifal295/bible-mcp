@@ -7,36 +7,56 @@ def _to_payload(value):
     return value
 
 
+def _require_text(value, field_name: str) -> str:
+    if value is None or not str(value).strip():
+        raise ValueError(f"{field_name} cannot be blank")
+    return str(value)
+
+
+def _require_limit(value, field_name: str = "limit") -> int:
+    limit = int(value)
+    if limit < 1:
+        raise ValueError(f"{field_name} must be at least 1")
+    return limit
+
+
+def _require_window(value) -> int:
+    window = int(value)
+    if window < 0:
+        raise ValueError("window must be at least 0")
+    return window
+
+
 def build_tool_handlers(search_service, passage_service, related_service, summarizer, entity_service):
     def search_bible(payload: dict):
-        query = payload["query"]
-        limit = int(payload.get("limit", 5))
+        query = _require_text(payload["query"], "query")
+        limit = _require_limit(payload.get("limit", 5))
         results = search_service.search(query, limit=limit)
         return {"results": [_to_payload(result) for result in results]}
 
     def lookup_passage(payload: dict):
-        reference = payload["reference"]
+        reference = _require_text(payload["reference"], "reference")
         result = passage_service.lookup(reference)
         return _to_payload(result)
 
     def expand_context(payload: dict):
-        reference = payload["reference"]
-        window = int(payload.get("window", 2))
+        reference = _require_text(payload["reference"], "reference")
+        window = _require_window(payload.get("window", 2))
         result = passage_service.expand_context(reference, window=window)
         return _to_payload(result)
 
     def suggest_related_passages(payload: dict):
-        source_text = payload["text"]
-        limit = int(payload.get("limit", 5))
+        source_text = _require_text(payload["text"], "text")
+        limit = _require_limit(payload.get("limit", 5))
         results = related_service.suggest(source_text, limit=limit)
         return {"results": [_to_payload(result) for result in results]}
 
     def summarize_passage(payload: dict):
-        text = payload["text"]
+        text = _require_text(payload["text"], "text")
         return summarizer(text)
 
     def search_entities(payload: dict):
-        query = payload["query"]
+        query = _require_text(payload["query"], "query")
         results = entity_service.search(query)
         return {"results": [_to_payload(result) for result in results]}
 

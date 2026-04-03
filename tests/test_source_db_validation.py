@@ -47,6 +47,14 @@ def test_validate_source_database_rejects_missing_text_column(temp_dir) -> None:
         validate_source_database(SourceBibleConfig(path=source_path, table="verses"))
 
 
+def test_validate_source_database_reports_missing_table(temp_dir) -> None:
+    source_path = temp_dir / "missing-table.sqlite"
+    sqlite3.connect(source_path).close()
+
+    with pytest.raises(SourceSchemaError, match="Source table not found"):
+        validate_source_database(SourceBibleConfig(path=source_path, table="verses"))
+
+
 def test_validate_source_database_accepts_quoted_table_name(temp_dir) -> None:
     source_path = temp_dir / "quoted.sqlite"
     conn = sqlite3.connect(source_path)

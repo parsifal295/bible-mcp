@@ -25,8 +25,15 @@ REQUIRED_APP_DB_TABLES = ("verses", "passage_chunks", "passage_chunks_fts")
 OPTIONAL_STUDY_DB_TABLES = ("people", "entity_aliases")
 
 
+def _required_env(name: str) -> str:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        raise ValueError(f"Missing required environment variable: {name}")
+    return value
+
+
 def load_config() -> AppConfig:
-    source_path = Path(os.environ["BIBLE_SOURCE_DB"])
+    source_path = Path(_required_env("BIBLE_SOURCE_DB"))
     source_table = os.environ.get("BIBLE_SOURCE_TABLE", "verses")
     app_db_path = Path(os.environ.get("BIBLE_APP_DB", "data/app.sqlite"))
     faiss_index_path = Path(os.environ.get("BIBLE_FAISS_INDEX", "data/chunks.faiss"))
@@ -55,6 +62,13 @@ def validate_runtime_installation(config: AppConfig) -> FaissChunkIndex:
                 ).fetchone()
                 is None
             ]
+            if not missing_tables:
+                passage_chunk_ids = [
+                    row[0]
+                    for row in conn.execute(
+                        "select chunk_id from passage_chunks order by id"
+                    ).fetchall()
+                ]
         finally:
             conn.close()
     except sqlite3.Error as exc:
@@ -68,6 +82,10 @@ def validate_runtime_installation(config: AppConfig) -> FaissChunkIndex:
     vector_store = FaissChunkIndex(config.faiss_index_path)
     try:
         vector_store.load()
+        if vector_store.id_map != passage_chunk_ids:
+            raise RuntimeError(
+                "FAISS mapping ids do not match passage_chunks in app DB"
+            )
     except FileNotFoundError as exc:
         raise RuntimeError(
             f"FAISS artifacts are missing or incomplete: {config.faiss_index_path}"

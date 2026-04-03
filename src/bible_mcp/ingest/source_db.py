@@ -20,6 +20,8 @@ def _table_columns(db_path: Path, table: str) -> list[str]:
     try:
         conn = sqlite3.connect(db_path)
         rows = conn.execute(f"pragma table_info({_quote_identifier(table)})").fetchall()
+        if not rows:
+            raise SourceSchemaError(f"Source table not found: {table} in {db_path}")
     except sqlite3.Error as exc:
         raise SourceSchemaError(f"Failed to inspect source database: {db_path}") from exc
     finally:

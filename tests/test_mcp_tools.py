@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
 from typer.testing import CliRunner
 
 from bible_mcp.cli import app
@@ -63,6 +64,39 @@ def _write_app_db(path: Path) -> None:
     conn.close()
 
 
+def _write_app_db_with_chunk_ids(path: Path, chunk_ids: list[str]) -> None:
+    conn = connect_db(path)
+    ensure_schema(conn)
+    for chunk_id in chunk_ids:
+        conn.execute(
+            """
+            insert into passage_chunks(
+                chunk_id,
+                start_ref,
+                end_ref,
+                book,
+                chapter_range,
+                text,
+                token_count,
+                chunk_strategy
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                chunk_id,
+                "Genesis 1:1",
+                "Genesis 1:1",
+                "Genesis",
+                "1",
+                "태초에 하나님이 천지를 창조하시니라",
+                5,
+                "verse_window",
+            ),
+        )
+    conn.commit()
+    conn.close()
+
+
 def test_search_bible_handler_returns_serializable_payload() -> None:
     handlers = build_tool_handlers(FakeSearchService(), FakePassageService(), None, None, None)
     result = handlers["search_bible"]({"query": "창조", "limit": 3})
@@ -82,6 +116,20 @@ def test_expand_context_handler_delegates_to_passage_service() -> None:
     result = handlers["expand_context"]({"reference": "Genesis 1:2", "window": 1})
 
     assert result["passage_text"] == "1절 문맥"
+
+
+def test_search_bible_handler_rejects_blank_query() -> None:
+    handlers = build_tool_handlers(FakeSearchService(), FakePassageService(), None, None, None)
+
+    with pytest.raises(ValueError, match="query cannot be blank"):
+        handlers["search_bible"]({"query": "   ", "limit": 3})
+
+
+def test_expand_context_handler_rejects_negative_window() -> None:
+    handlers = build_tool_handlers(FakeSearchService(), FakePassageService(), None, None, None)
+
+    with pytest.raises(ValueError, match="window must be at least 0"):
+        handlers["expand_context"]({"reference": "Genesis 1:2", "window": -1})
 
 
 def test_create_mcp_server_registers_expected_tools() -> None:
@@ -136,6 +184,27 @@ def test_doctor_fails_when_faiss_sidecars_are_corrupt(tmp_path: Path, monkeypatc
     assert "FAISS mapping integrity mismatch" in result.stdout
 
 
+def test_doctor_fails_when_faiss_mapping_ids_do_not_match_passage_chunks(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source_db = tmp_path / "source.sqlite"
+    app_db = tmp_path / "app.sqlite"
+    faiss_path = tmp_path / "chunks.faiss"
+
+    _write_source_db(source_db)
+    _write_app_db_with_chunk_ids(app_db, ["chunk-b"])
+    FaissChunkIndex(faiss_path).build([("chunk-a", [1.0, 0.0])])
+
+    monkeypatch.setenv("BIBLE_SOURCE_DB", str(source_db))
+    monkeypatch.setenv("BIBLE_APP_DB", str(app_db))
+    monkeypatch.setenv("BIBLE_FAISS_INDEX", str(faiss_path))
+
+    result = CliRunner().invoke(app, ["doctor"])
+
+    assert result.exit_code == 1
+    assert "passage_chunks" in result.stdout
+
+
 def test_serve_fails_before_startup_when_app_db_is_missing(tmp_path: Path, monkeypatch) -> None:
     source_db = tmp_path / "source.sqlite"
     faiss_path = tmp_path / "chunks.faiss"
@@ -175,4 +244,28 @@ def test_serve_fails_before_startup_when_faiss_sidecars_are_unusable(
     result = CliRunner().invoke(app, ["serve"])
 
     assert result.exit_code == 1
+    assert create_server.call_count == 0
+
+
+def test_serve_reports_missing_required_environment_variable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source_db = tmp_path / "source.sqlite"
+    app_db = tmp_path / "app.sqlite"
+    faiss_path = tmp_path / "chunks.faiss"
+
+    _write_source_db(source_db)
+    _write_app_db(app_db)
+    FaissChunkIndex(faiss_path).build([("chunk-1", [1.0, 0.0])])
+
+    monkeypatch.delenv("BIBLE_SOURCE_DB", raising=False)
+    monkeypatch.delenv("BIBLE_APP_DB", raising=False)
+    monkeypatch.delenv("BIBLE_FAISS_INDEX", raising=False)
+
+    create_server = Mock()
+    monkeypatch.setattr("bible_mcp.cli.create_mcp_server", create_server)
+    result = CliRunner().invoke(app, ["serve"], env={})
+
+    assert result.exit_code == 1
+    assert "BIBLE_SOURCE_DB" in result.stdout
     assert create_server.call_count == 0
