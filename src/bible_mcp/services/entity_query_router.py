@@ -4,20 +4,21 @@ import re
 
 
 _RELATION_RULES = (
-    (re.compile(r"^(?P<entity>.+?)은 누구 아들인가$"), "father", "incoming"),
-    (re.compile(r"^(?P<entity>.+?)의 아버지$"), "father", "incoming"),
-    (re.compile(r"^(?P<entity>.+?)의 어머니$"), "mother", "incoming"),
-    (re.compile(r"^(?P<entity>.+?)의 자녀$"), "child", "outgoing"),
-    (re.compile(r"^(?P<entity>.+?)의 아들$"), "son", "outgoing"),
-    (re.compile(r"^(?P<entity>.+?)의 딸$"), "daughter", "outgoing"),
-    (re.compile(r"^(?P<entity>.+?)의 형제$"), "brother", "outgoing"),
-    (re.compile(r"^(?P<entity>.+?)의 자매$"), "sister", "outgoing"),
-    (re.compile(r"^(?P<entity>.+?)의 배우자$"), "spouse", "outgoing"),
-    (re.compile(r"^(?P<entity>.+?)의 제자들?$"), "disciple_of", "incoming"),
+    (re.compile(r"^(?P<entity>.+?)은 누구 아들인가$"), "father", "father", "incoming"),
+    (re.compile(r"^(?P<entity>.+?)의 아버지$"), "father", "father", "incoming"),
+    (re.compile(r"^(?P<entity>.+?)의 어머니$"), "mother", "mother", "incoming"),
+    (re.compile(r"^(?P<entity>.+?)의 자녀$"), "child", "father", "outgoing"),
+    (re.compile(r"^(?P<entity>.+?)의 아들$"), "son", "son", "outgoing"),
+    (re.compile(r"^(?P<entity>.+?)의 딸$"), "daughter", "daughter", "outgoing"),
+    (re.compile(r"^(?P<entity>.+?)의 형제$"), "brother", "brother", "outgoing"),
+    (re.compile(r"^(?P<entity>.+?)의 자매$"), "sister", "sister", "outgoing"),
+    (re.compile(r"^(?P<entity>.+?)의 배우자$"), "spouse", "spouse", "outgoing"),
+    (re.compile(r"^(?P<entity>.+?)의 제자들?$"), "disciple_of", "disciple_of", "incoming"),
 )
 _PASSAGE_PATTERN = re.compile(
     r"^(?P<entity>.+?)\s*(대표 구절|관련 구절|연결 구절|등장 구절)$"
 )
+_EVENT_PATTERN = re.compile(r"^(?P<entity>.+?)\s*사건$")
 _PLACE_HINT_TOKENS = ("성", "강", "바다", "산", "광야", "도시")
 _PROBE_ENTITY_TYPES = ("places", "events", "people")
 
@@ -49,7 +50,7 @@ class EntityQueryRouter:
                 return self._intent_unavailable(parsed, "relations")
             result = self.relation_service.lookup(
                 parsed["entity_text"],
-                relation_type=parsed["relation_type"],
+                relation_type=parsed.get("_lookup_relation_type", parsed["relation_type"]),
                 entity_type=parsed["entity_type"],
                 direction=parsed["direction"],
                 limit=limit,
@@ -99,17 +100,37 @@ class EntityQueryRouter:
             passage["original_query"] = original_query
             return passage
 
+        event_match = _EVENT_PATTERN.match(normalized_query)
+        if event_match is not None:
+            entity_text, search_results = self._resolve_event_query_text(
+                normalized_query,
+                limit,
+            )
+            return {
+                "intent": "entity_search",
+                "original_query": original_query,
+                "normalized_query": normalized_query,
+                "entity_text": entity_text,
+                "entity_type": "events",
+                "relation_type": None,
+                "direction": None,
+                "target_tool": "search_entities",
+                "_search_results": search_results,
+            }
+
+        entity_text = normalized_query
         entity_type, search_results = self._infer_entity_type(
-            normalized_query,
+            entity_text,
             normalized_query,
             "entity_search",
             limit,
         )
+
         return {
             "intent": "entity_search",
             "original_query": original_query,
             "normalized_query": normalized_query,
-            "entity_text": normalized_query,
+            "entity_text": entity_text,
             "entity_type": entity_type,
             "relation_type": None,
             "direction": None,
@@ -118,7 +139,7 @@ class EntityQueryRouter:
         }
 
     def _parse_relation(self, normalized_query: str):
-        for pattern, relation_type, direction in _RELATION_RULES:
+        for pattern, relation_type, lookup_relation_type, direction in _RELATION_RULES:
             match = pattern.match(normalized_query)
             if match is None:
                 continue
@@ -131,6 +152,7 @@ class EntityQueryRouter:
                 "relation_type": relation_type,
                 "direction": direction,
                 "target_tool": "get_entity_relations",
+                "_lookup_relation_type": lookup_relation_type,
             }
         return None
 
@@ -140,12 +162,19 @@ class EntityQueryRouter:
             return None
 
         entity_text = match.group("entity").strip()
-        entity_type, _search_results = self._infer_entity_type(
-            entity_text,
-            normalized_query,
-            "passages",
-            limit,
-        )
+        if _EVENT_PATTERN.match(entity_text) is not None:
+            entity_text, _search_results = self._resolve_event_query_text(
+                entity_text,
+                limit,
+            )
+            entity_type = "events"
+        else:
+            entity_type, _search_results = self._infer_entity_type(
+                entity_text,
+                normalized_query,
+                "passages",
+                limit,
+            )
         return {
             "intent": "passages",
             "normalized_query": normalized_query,
@@ -184,6 +213,31 @@ class EntityQueryRouter:
 
     def _looks_like_place(self, entity_text: str) -> bool:
         return any(entity_text.endswith(token) for token in _PLACE_HINT_TOKENS)
+
+    def _resolve_event_query_text(
+        self,
+        event_query_text: str,
+        limit: int,
+    ) -> tuple[str, list[dict]]:
+        direct_matches = self.entity_service.search(
+            event_query_text,
+            entity_type="events",
+            limit=limit,
+        )
+        if direct_matches:
+            return event_query_text, direct_matches
+
+        match = _EVENT_PATTERN.match(event_query_text)
+        if match is None:
+            return event_query_text, []
+
+        stripped_text = match.group("entity").strip()
+        stripped_matches = self.entity_service.search(
+            stripped_text,
+            entity_type="events",
+            limit=limit,
+        )
+        return stripped_text, stripped_matches
 
     def _intent_unavailable(self, parsed: dict, intent: str):
         return {

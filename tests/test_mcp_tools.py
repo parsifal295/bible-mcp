@@ -555,7 +555,11 @@ def test_route_entity_query_handler_routes_relation_and_passage_queries_with_rea
     )
 
     relation_result = handlers["route_entity_query"]({"query": "예수의 제자들", "limit": 5})
+    children_result = handlers["route_entity_query"]({"query": "아브라함의 자녀", "limit": 5})
     passage_result = handlers["route_entity_query"]({"query": "예루살렘 대표 구절", "limit": 1})
+    event_result = handlers["route_entity_query"]({"query": "출애굽 사건", "limit": 1})
+    alias_event_result = handlers["route_entity_query"]({"query": "십자가 사건", "limit": 1})
+    event_passage_result = handlers["route_entity_query"]({"query": "출애굽 사건 대표 구절", "limit": 1})
 
     assert relation_result["intent"] == "relations"
     assert relation_result["parsed"]["relation_type"] == "disciple_of"
@@ -563,6 +567,12 @@ def test_route_entity_query_handler_routes_relation_and_passage_queries_with_rea
     assert {row["slug"] for row in relation_result["result"]["relations"]} == {
         "john",
         "peter",
+    }
+    assert children_result["intent"] == "relations"
+    assert children_result["parsed"]["relation_type"] == "child"
+    assert children_result["parsed"]["direction"] == "outgoing"
+    assert {row["slug"] for row in children_result["result"]["relations"]} == {
+        "isaac",
     }
     assert passage_result["intent"] == "passages"
     assert passage_result["parsed"]["entity_type"] == "places"
@@ -572,6 +582,50 @@ def test_route_entity_query_handler_routes_relation_and_passage_queries_with_rea
             "passage_text": "Our feet shall stand within thy gates, O Jerusalem.",
         }
     ]
+    assert event_result["intent"] == "entity_search"
+    assert event_result["parsed"]["entity_text"] == "출애굽"
+    assert event_result["result"] == {
+        "results": [
+            {
+                "entity_type": "events",
+                "slug": "exodus",
+                "display_name": "출애굽",
+                "description": "이스라엘이 애굽을 떠난 구원 사건",
+                "matched_by": "display_name",
+            }
+        ]
+    }
+    assert alias_event_result["intent"] == "entity_search"
+    assert alias_event_result["parsed"]["entity_text"] == "십자가 사건"
+    assert alias_event_result["result"] == {
+        "results": [
+            {
+                "entity_type": "events",
+                "slug": "crucifixion",
+                "display_name": "십자가 처형",
+                "description": "예수의 십자가 죽음 사건",
+                "matched_by": "alias",
+            }
+        ]
+    }
+    assert event_passage_result["intent"] == "passages"
+    assert event_passage_result["parsed"]["entity_text"] == "출애굽"
+    assert event_passage_result["result"] == {
+        "resolved_entity": {
+            "entity_type": "events",
+            "slug": "exodus",
+            "display_name": "출애굽",
+            "description": "이스라엘이 애굽을 떠난 구원 사건",
+            "matched_by": "display_name",
+        },
+        "matches": [],
+        "passages": [
+            {
+                "reference": "Exodus 12:41",
+                "passage_text": "And it came to pass at the end of the four hundred and thirty years.",
+            }
+        ],
+    }
 
 
 def test_create_mcp_server_registers_expected_tools() -> None:

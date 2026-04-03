@@ -174,7 +174,8 @@ def test_route_routes_jerusalem_passage_query_to_entity_passages() -> None:
 
 def test_route_routes_event_queries_to_entity_search_results() -> None:
     entity_service = FakeEntityService()
-    entity_service.responses[("출애굽 사건", "events")] = [
+    entity_service.responses[("출애굽 사건", "events")] = []
+    entity_service.responses[("출애굽", "events")] = [
         {
             "entity_type": "events",
             "slug": "exodus",
@@ -195,7 +196,7 @@ def test_route_routes_event_queries_to_entity_search_results() -> None:
     assert result["parsed"] == {
         "original_query": "출애굽 사건",
         "normalized_query": "출애굽 사건",
-        "entity_text": "출애굽 사건",
+        "entity_text": "출애굽",
         "entity_type": "events",
         "relation_type": None,
         "direction": None,
@@ -215,12 +216,95 @@ def test_route_routes_event_queries_to_entity_search_results() -> None:
     assert result["error"] is None
 
 
+def test_route_keeps_event_aliases_that_already_include_sageon() -> None:
+    entity_service = FakeEntityService()
+    entity_service.responses[("십자가 사건", "events")] = [
+        {
+            "entity_type": "events",
+            "slug": "crucifixion",
+            "display_name": "십자가 처형",
+            "description": "예수의 십자가 죽음 사건",
+            "matched_by": "alias",
+        }
+    ]
+    router = EntityQueryRouter(
+        entity_service,
+        relation_service=None,
+        entity_passage_service=None,
+    )
+
+    result = router.route("십자가 사건", limit=1)
+
+    assert result["parsed"]["entity_text"] == "십자가 사건"
+    assert result["result"] == {
+        "results": [
+            {
+                "entity_type": "events",
+                "slug": "crucifixion",
+                "display_name": "십자가 처형",
+                "description": "예수의 십자가 죽음 사건",
+                "matched_by": "alias",
+            }
+        ]
+    }
+    assert entity_service.calls == [
+        {"query": "십자가 사건", "entity_type": "events", "limit": 1},
+    ]
+
+
+def test_route_resolves_event_passage_queries_with_sageon_suffix() -> None:
+    entity_service = FakeEntityService()
+    entity_service.responses[("출애굽 사건", "events")] = []
+    entity_service.responses[("출애굽", "events")] = [
+        {
+            "entity_type": "events",
+            "slug": "exodus",
+            "display_name": "출애굽",
+            "description": "이스라엘의 애굽 탈출 사건",
+            "matched_by": "display_name",
+        }
+    ]
+    entity_passage_service = FakeEntityPassageService(
+        {
+            "resolved_entity": {
+                "entity_type": "events",
+                "slug": "exodus",
+                "display_name": "출애굽",
+                "description": "이스라엘의 애굽 탈출 사건",
+                "matched_by": "display_name",
+            },
+            "matches": [],
+            "passages": [
+                {
+                    "reference": "Exodus 12:41",
+                    "passage_text": "애굽에서 나옴이라",
+                }
+            ],
+        }
+    )
+    router = EntityQueryRouter(
+        entity_service,
+        relation_service=None,
+        entity_passage_service=entity_passage_service,
+    )
+
+    result = router.route("출애굽 사건 대표 구절", limit=1)
+
+    assert result["parsed"]["entity_text"] == "출애굽"
+    assert result["parsed"]["entity_type"] == "events"
+    assert result["result"]["passages"][0]["reference"] == "Exodus 12:41"
+    assert entity_passage_service.calls == [
+        {"query": "출애굽", "entity_type": "events", "limit": 1},
+    ]
+
+
 def test_route_routes_implicit_relation_forms() -> None:
+    relation_service = FakeRelationService(
+        {"resolved_entity": None, "matches": [], "relations": []}
+    )
     router = EntityQueryRouter(
         FakeEntityService(),
-        relation_service=FakeRelationService(
-            {"resolved_entity": None, "matches": [], "relations": []}
-        ),
+        relation_service=relation_service,
         entity_passage_service=None,
     )
 
@@ -233,6 +317,22 @@ def test_route_routes_implicit_relation_forms() -> None:
     assert child_result["parsed"]["entity_text"] == "야곱"
     assert child_result["parsed"]["relation_type"] == "child"
     assert child_result["parsed"]["direction"] == "outgoing"
+    assert relation_service.calls == [
+        {
+            "query": "다윗",
+            "relation_type": "father",
+            "entity_type": "people",
+            "direction": "incoming",
+            "limit": 5,
+        },
+        {
+            "query": "야곱",
+            "relation_type": "father",
+            "entity_type": "people",
+            "direction": "outgoing",
+            "limit": 5,
+        },
+    ]
 
 
 def test_route_returns_intent_unavailable_for_missing_relation_service() -> None:
