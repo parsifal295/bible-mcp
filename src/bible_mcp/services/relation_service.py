@@ -21,6 +21,11 @@ class RelationLookupService:
         if direction not in {"outgoing", "incoming"}:
             raise ValueError("direction must be 'outgoing' or 'incoming'")
 
+        if entity_type is None:
+            entity_type = "people"
+        elif entity_type != "people":
+            return {"resolved_entity": None, "matches": [], "relations": []}
+
         search_limit = max(limit, 2)
         matches = self.entity_service.search(query, entity_type=entity_type, limit=search_limit)
 
@@ -60,6 +65,7 @@ class RelationLookupService:
         if direction == "outgoing":
             sql = f"""
                 select
+                    distinct
                     er.relation_type,
                     p.slug,
                     p.display_name,
@@ -77,6 +83,7 @@ class RelationLookupService:
         else:
             sql = f"""
                 select
+                    distinct
                     er.relation_type,
                     p.slug,
                     p.display_name,

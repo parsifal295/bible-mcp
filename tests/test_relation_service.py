@@ -126,6 +126,69 @@ def test_lookup_returns_outgoing_relations_for_a_unique_entity(tmp_path) -> None
     }
 
 
+def test_lookup_deduplicates_visible_relation_rows(tmp_path) -> None:
+    conn, service = _build_service(tmp_path)
+    conn.execute(
+        "insert into people(slug, display_name, description) values (?, ?, ?)",
+        ("abraham", "Abraham", "patriarch"),
+    )
+    conn.execute(
+        "insert into people(slug, display_name, description) values (?, ?, ?)",
+        ("isaac", "Isaac", "son"),
+    )
+    conn.execute(
+        """
+        insert into entity_relationships(
+            source_type,
+            source_slug,
+            relation_type,
+            target_type,
+            target_slug,
+            is_primary,
+            note
+        ) values (?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("people", "abraham", "father", "people", "isaac", 1, "patriarch line"),
+    )
+    conn.execute(
+        """
+        insert into entity_relationships(
+            source_type,
+            source_slug,
+            relation_type,
+            target_type,
+            target_slug,
+            is_primary,
+            note
+        ) values (?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("people", "abraham", "father", "people", "isaac", 0, "alternate note"),
+    )
+    conn.commit()
+
+    result = service.lookup("Abraham", relation_type="father")
+
+    assert result == {
+        "resolved_entity": {
+            "entity_type": "people",
+            "slug": "abraham",
+            "display_name": "Abraham",
+            "description": "patriarch",
+            "matched_by": "display_name",
+        },
+        "matches": [],
+        "relations": [
+            {
+                "relation_type": "father",
+                "entity_type": "people",
+                "slug": "isaac",
+                "display_name": "Isaac",
+                "description": "son",
+            }
+        ],
+    }
+
+
 def test_lookup_returns_incoming_relations_for_a_unique_entity(tmp_path) -> None:
     conn, service = _build_service(tmp_path)
     conn.execute(
@@ -180,3 +243,16 @@ def test_lookup_rejects_unknown_direction(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="direction must be 'outgoing' or 'incoming'"):
         service.lookup("Abraham", direction="sideways")
+
+
+def test_lookup_rejects_non_people_entity_types_explicitly(tmp_path) -> None:
+    conn, service = _build_service(tmp_path)
+    conn.execute(
+        "insert into people(slug, display_name, description) values (?, ?, ?)",
+        ("abraham", "Abraham", "patriarch"),
+    )
+    conn.commit()
+
+    result = service.lookup("Abraham", entity_type="events")
+
+    assert result == {"resolved_entity": None, "matches": [], "relations": []}
