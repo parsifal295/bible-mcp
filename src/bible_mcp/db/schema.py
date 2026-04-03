@@ -101,6 +101,12 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
         create index if not exists idx_entity_relationships_target
         on entity_relationships(target_type, target_slug);
+
+        create index if not exists idx_entity_aliases_entity
+        on entity_aliases(entity_type, entity_slug);
+
+        create index if not exists idx_entity_verse_links_entity
+        on entity_verse_links(entity_type, entity_slug);
         """
     )
     conn.commit()
