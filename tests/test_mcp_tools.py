@@ -41,6 +41,54 @@ class FakePassageService:
         return {"reference": reference, "passage_text": f"{window}절 문맥"}
 
 
+class FakeEntityService:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def search(
+        self,
+        query: str,
+        entity_type: str | None = None,
+        limit: int = 5,
+    ):
+        self.calls.append(
+            {
+                "query": query,
+                "entity_type": entity_type,
+                "limit": limit,
+            }
+        )
+        return [{"display_name": "아브라함", "entity_type": "people", "slug": "abraham"}]
+
+
+class FakeRelationService:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def lookup(
+        self,
+        query: str,
+        relation_type: str | None = None,
+        entity_type: str | None = None,
+        direction: str = "outgoing",
+        limit: int = 5,
+    ):
+        self.calls.append(
+            {
+                "query": query,
+                "relation_type": relation_type,
+                "entity_type": entity_type,
+                "direction": direction,
+                "limit": limit,
+            }
+        )
+        return {
+            "resolved_entity": {"display_name": "아브라함", "slug": "abraham"},
+            "matches": [],
+            "relations": [{"relation_type": "father", "display_name": "이삭", "slug": "isaac"}],
+        }
+
+
 def _write_source_db(path: Path) -> None:
     conn = sqlite3.connect(path)
     conn.execute(
@@ -132,8 +180,98 @@ def test_expand_context_handler_rejects_negative_window() -> None:
         handlers["expand_context"]({"reference": "Genesis 1:2", "window": -1})
 
 
+def test_search_entities_handler_forwards_optional_filters() -> None:
+    entity_service = FakeEntityService()
+    handlers = build_tool_handlers(
+        FakeSearchService(),
+        FakePassageService(),
+        None,
+        Mock(),
+        entity_service,
+        None,
+    )
+
+    result = handlers["search_entities"](
+        {"query": "아브라함", "entity_type": "people", "limit": 2}
+    )
+
+    assert entity_service.calls == [
+        {
+            "query": "아브라함",
+            "entity_type": "people",
+            "limit": 2,
+        }
+    ]
+    assert result["results"] == [
+        {"display_name": "아브라함", "entity_type": "people", "slug": "abraham"}
+    ]
+
+
+def test_search_entities_handler_rejects_invalid_limit() -> None:
+    handlers = build_tool_handlers(
+        FakeSearchService(),
+        FakePassageService(),
+        None,
+        Mock(),
+        FakeEntityService(),
+        None,
+    )
+
+    with pytest.raises(ValueError, match="limit must be at least 1"):
+        handlers["search_entities"]({"query": "아브라함", "limit": 0})
+
+
+def test_get_entity_relations_handler_forwards_optional_filters() -> None:
+    relation_service = FakeRelationService()
+    handlers = build_tool_handlers(
+        FakeSearchService(),
+        FakePassageService(),
+        None,
+        Mock(),
+        FakeEntityService(),
+        relation_service,
+    )
+
+    result = handlers["get_entity_relations"](
+        {
+            "query": "아브라함",
+            "relation_type": "father",
+            "entity_type": "people",
+            "direction": "incoming",
+            "limit": 3,
+        }
+    )
+
+    assert relation_service.calls == [
+        {
+            "query": "아브라함",
+            "relation_type": "father",
+            "entity_type": "people",
+            "direction": "incoming",
+            "limit": 3,
+        }
+    ]
+    assert result["relations"] == [
+        {"relation_type": "father", "display_name": "이삭", "slug": "isaac"}
+    ]
+
+
+def test_get_entity_relations_handler_rejects_invalid_direction() -> None:
+    handlers = build_tool_handlers(
+        FakeSearchService(),
+        FakePassageService(),
+        None,
+        Mock(),
+        FakeEntityService(),
+        FakeRelationService(),
+    )
+
+    with pytest.raises(ValueError, match="direction must be 'incoming' or 'outgoing'"):
+        handlers["get_entity_relations"]({"query": "아브라함", "direction": "sideways"})
+
+
 def test_create_mcp_server_registers_expected_tools() -> None:
-    mcp = create_mcp_server(FakeSearchService(), FakePassageService(), None, None, None)
+    mcp = create_mcp_server(FakeSearchService(), FakePassageService(), None, None, None, None)
     tools = asyncio.run(mcp.list_tools())
 
     assert {tool.name for tool in tools} == {
@@ -290,3 +428,59 @@ def test_serve_reports_missing_required_environment_variable(
     assert result.exit_code == 1
     assert "BIBLE_SOURCE_DB" in result.stdout
     assert create_server.call_count == 0
+
+
+def test_index_imports_metadata_before_chunk_and_index_rebuild(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = Mock()
+    config.embeddings.model_name = "test-model"
+    config.faiss_index_path = tmp_path / "chunks.faiss"
+
+    call_order: list[str] = []
+    fake_conn = object()
+
+    monkeypatch.setattr("bible_mcp.cli.load_config", lambda: config)
+    monkeypatch.setattr("bible_mcp.cli.validate_source_database", lambda loaded: call_order.append("validate"))
+    monkeypatch.setattr("bible_mcp.cli.connect_db", lambda path: fake_conn)
+    monkeypatch.setattr("bible_mcp.cli.ensure_schema", lambda conn: call_order.append("ensure_schema"))
+    monkeypatch.setattr("bible_mcp.cli.import_verses", lambda loaded, conn: call_order.append("import_verses"))
+    monkeypatch.setattr(
+        "bible_mcp.cli.import_metadata_fixtures",
+        lambda conn: call_order.append("import_metadata_fixtures"),
+    )
+    monkeypatch.setattr("bible_mcp.cli.build_chunks", lambda conn: call_order.append("build_chunks"))
+    monkeypatch.setattr(
+        "bible_mcp.cli.rebuild_fts_indexes",
+        lambda conn: call_order.append("rebuild_fts_indexes"),
+    )
+
+    class FakeEmbedder:
+        def __init__(self, model_name: str) -> None:
+            call_order.append(f"embedder:{model_name}")
+
+    class FakeVectorStore:
+        def __init__(self, path: Path) -> None:
+            call_order.append(f"vector_store:{path.name}")
+
+    monkeypatch.setattr("bible_mcp.cli.SentenceTransformerEmbedder", FakeEmbedder)
+    monkeypatch.setattr("bible_mcp.cli.FaissChunkIndex", FakeVectorStore)
+    monkeypatch.setattr(
+        "bible_mcp.cli.index_chunk_embeddings",
+        lambda conn, embedder, vector_store: call_order.append("index_chunk_embeddings"),
+    )
+
+    result = CliRunner().invoke(app, ["index"])
+
+    assert result.exit_code == 0
+    assert call_order == [
+        "validate",
+        "ensure_schema",
+        "import_verses",
+        "import_metadata_fixtures",
+        "build_chunks",
+        "rebuild_fts_indexes",
+        "embedder:test-model",
+        "vector_store:chunks.faiss",
+        "index_chunk_embeddings",
+    ]

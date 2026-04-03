@@ -12,17 +12,20 @@ from bible_mcp.index.faiss_store import FaissChunkIndex
 from bible_mcp.index.fts import rebuild_fts_indexes
 from bible_mcp.ingest.chunker import build_chunks
 from bible_mcp.ingest.importer import import_verses
+from bible_mcp.ingest.metadata_importer import import_metadata_fixtures
 from bible_mcp.ingest.source_db import SourceSchemaError, validate_source_database
 from bible_mcp.mcp_server import create_mcp_server
 from bible_mcp.services.entity_service import EntityService
 from bible_mcp.services.related_service import RelatedPassageService
 from bible_mcp.services.passage_service import PassageService
+from bible_mcp.services.relation_service import RelationLookupService
 from bible_mcp.services.search_service import SearchService
 from bible_mcp.services.summarizer import summarize_passage_text
 
 app = typer.Typer(help="Korean Bible MCP server")
 REQUIRED_APP_DB_TABLES = ("verses", "passage_chunks", "passage_chunks_fts")
 OPTIONAL_STUDY_DB_TABLES = ("people", "entity_aliases")
+OPTIONAL_RELATION_DB_TABLES = ("entity_relationships",)
 
 
 def _required_env(name: str) -> str:
@@ -94,9 +97,20 @@ def validate_runtime_installation(config: AppConfig) -> FaissChunkIndex:
 
 
 def _app_db_supports_optional_study_tools(config: AppConfig) -> bool:
+    return _app_db_has_tables(config, OPTIONAL_STUDY_DB_TABLES)
+
+
+def _app_db_supports_relation_tools(config: AppConfig) -> bool:
+    return _app_db_has_tables(
+        config,
+        OPTIONAL_STUDY_DB_TABLES + OPTIONAL_RELATION_DB_TABLES,
+    )
+
+
+def _app_db_has_tables(config: AppConfig, tables: tuple[str, ...]) -> bool:
     conn = sqlite3.connect(f"file:{config.app_db_path}?mode=ro", uri=True)
     try:
-        for table in OPTIONAL_STUDY_DB_TABLES:
+        for table in tables:
             if (
                 conn.execute(
                     "select 1 from sqlite_master where type = 'table' and name = ?",
@@ -117,6 +131,7 @@ def index() -> None:
     conn = connect_db(config.app_db_path)
     ensure_schema(conn)
     import_verses(config, conn)
+    import_metadata_fixtures(conn)
     build_chunks(conn)
     rebuild_fts_indexes(conn)
     embedder = SentenceTransformerEmbedder(config.embeddings.model_name)
@@ -138,16 +153,21 @@ def serve() -> None:
             related_service = RelatedPassageService(conn, embedder, vector_store)
             entity_service = EntityService(conn)
             summarizer = summarize_passage_text
+            relation_service = None
+            if _app_db_supports_relation_tools(config):
+                relation_service = RelationLookupService(conn, entity_service)
         else:
             related_service = None
             entity_service = None
             summarizer = None
+            relation_service = None
         create_mcp_server(
             search_service,
             passage_service,
             related_service,
             summarizer,
             entity_service,
+            relation_service,
         ).run()
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         typer.echo(str(exc))

@@ -10,6 +10,7 @@ from bible_mcp.mcp_server import build_tool_handlers
 from bible_mcp.mcp_server import create_mcp_server
 from bible_mcp.services.related_service import RelatedPassageService
 from bible_mcp.services.entity_service import EntityService
+from bible_mcp.services.relation_service import RelationLookupService
 from bible_mcp.services.summarizer import summarize_passage_text
 
 
@@ -98,11 +99,17 @@ def test_serve_omits_optional_tools_when_entity_tables_are_missing(
             return [[1.0, 0.0] for _text in texts]
 
     def fake_create_mcp_server(
-        search_service, passage_service, related_service, summarizer, entity_service
+        search_service,
+        passage_service,
+        related_service,
+        summarizer,
+        entity_service,
+        relation_service,
     ):
         captured["related_service"] = related_service
         captured["summarizer"] = summarizer
         captured["entity_service"] = entity_service
+        captured["relation_service"] = relation_service
 
         class FakeServer:
             def run(self):
@@ -121,6 +128,66 @@ def test_serve_omits_optional_tools_when_entity_tables_are_missing(
     assert captured["related_service"] is None
     assert captured["summarizer"] is None
     assert captured["entity_service"] is None
+    assert captured["relation_service"] is None
+
+
+def test_serve_wires_relation_lookup_service_when_optional_tables_are_present(
+    tmp_path, monkeypatch
+) -> None:
+    from bible_mcp.db.connection import connect_db
+    from bible_mcp.db.schema import ensure_schema
+
+    app_db_path = tmp_path / "app.sqlite"
+    conn = connect_db(app_db_path)
+    ensure_schema(conn)
+    conn.close()
+
+    config = AppConfig(
+        source=SourceBibleConfig(path=tmp_path / "source.sqlite", table="verses"),
+        app_db_path=app_db_path,
+        faiss_index_path=tmp_path / "chunks.faiss",
+    )
+
+    captured = {}
+
+    class FakeEmbedder:
+        def __init__(self, model_name: str) -> None:
+            self.model_name = model_name
+
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            return [[1.0, 0.0] for _text in texts]
+
+    def fake_create_mcp_server(
+        search_service,
+        passage_service,
+        related_service,
+        summarizer,
+        entity_service,
+        relation_service,
+    ):
+        captured["related_service"] = related_service
+        captured["summarizer"] = summarizer
+        captured["entity_service"] = entity_service
+        captured["relation_service"] = relation_service
+
+        class FakeServer:
+            def run(self):
+                return None
+
+        return FakeServer()
+
+    monkeypatch.setattr("bible_mcp.cli.load_config", lambda: config)
+    monkeypatch.setattr("bible_mcp.cli.validate_runtime_installation", lambda config: object())
+    monkeypatch.setattr("bible_mcp.cli.SentenceTransformerEmbedder", FakeEmbedder)
+    monkeypatch.setattr("bible_mcp.cli.create_mcp_server", fake_create_mcp_server)
+
+    result = CliRunner().invoke(app, ["serve"])
+
+    assert result.exit_code == 0
+    assert isinstance(captured["related_service"], RelatedPassageService)
+    assert captured["summarizer"] is summarize_passage_text
+    assert isinstance(captured["entity_service"], EntityService)
+    assert isinstance(captured["relation_service"], RelationLookupService)
 
 
 def test_create_mcp_server_registers_optional_tools_when_collaborators_are_present() -> None:
@@ -140,8 +207,19 @@ def test_create_mcp_server_registers_optional_tools_when_collaborators_are_prese
             return [{"reference": "Romans 8:28", "passage_text": "모든 것이 합력하여", "score": 0.88}]
 
     class FakeEntityService:
-        def search(self, query: str):
+        def search(self, query: str, entity_type: str | None = None, limit: int = 5):
             return [{"display_name": "아브라함"}]
+
+    class FakeRelationService:
+        def lookup(
+            self,
+            query: str,
+            relation_type: str | None = None,
+            entity_type: str | None = None,
+            direction: str = "outgoing",
+            limit: int = 5,
+        ):
+            return {"resolved_entity": None, "matches": [], "relations": []}
 
     mcp = create_mcp_server(
         FakeSearchService(),
@@ -149,6 +227,7 @@ def test_create_mcp_server_registers_optional_tools_when_collaborators_are_prese
         FakeRelatedService(),
         summarize_passage_text,
         FakeEntityService(),
+        FakeRelationService(),
     )
     tools = asyncio.run(mcp.list_tools())
 
@@ -159,6 +238,7 @@ def test_create_mcp_server_registers_optional_tools_when_collaborators_are_prese
         "suggest_related_passages",
         "summarize_passage",
         "search_entities",
+        "get_entity_relations",
     }
 
 
