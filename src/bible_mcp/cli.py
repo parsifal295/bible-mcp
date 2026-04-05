@@ -12,7 +12,10 @@ from bible_mcp.index.faiss_store import FaissChunkIndex
 from bible_mcp.index.fts import rebuild_fts_indexes
 from bible_mcp.ingest.chunker import build_chunks
 from bible_mcp.ingest.importer import import_verses
-from bible_mcp.ingest.metadata_importer import import_metadata_bundle
+from bible_mcp.ingest.metadata_importer import (
+    drop_unresolvable_entity_verse_links,
+    import_metadata_bundle,
+)
 from bible_mcp.ingest.source_db import (
     SourceSchemaError,
     validate_source_database,
@@ -224,14 +227,25 @@ def sync_theographic() -> None:
     )
     conn = connect_db(config.app_db_path)
     ensure_schema(conn)
-    import_metadata_bundle(
-        conn,
+    filtered_bundle, skipped_links = drop_unresolvable_entity_verse_links(
         bundle,
         reference_validator=lambda reference: validate_source_reference(
             config.source,
             reference,
         ),
     )
+    import_metadata_bundle(
+        conn,
+        filtered_bundle,
+        reference_validator=lambda reference: validate_source_reference(
+            config.source,
+            reference,
+        ),
+    )
+    if skipped_links:
+        typer.echo(
+            f"Skipped {len(skipped_links)} unresolved entity verse links during sync"
+        )
     typer.echo(f"Theographic sync complete: {snapshot_dir}")
 
 

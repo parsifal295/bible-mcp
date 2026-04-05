@@ -378,6 +378,9 @@ def test_search_entities_handler_returns_place_results_with_real_entity_service(
                 "slug": "jerusalem",
                 "display_name": "예루살렘",
                 "description": None,
+                "latitude": 31.778,
+                "longitude": 35.235,
+                "google_maps_url": "https://www.google.com/maps?q=31.778,35.235",
                 "matched_by": "alias",
             }
         ]
@@ -415,6 +418,9 @@ def test_get_entity_passages_handler_returns_place_and_event_passages_with_real_
             "slug": "jerusalem",
             "display_name": "예루살렘",
             "description": None,
+            "latitude": 31.778,
+            "longitude": 35.235,
+            "google_maps_url": "https://www.google.com/maps?q=31.778,35.235",
             "matched_by": "alias",
         },
         "matches": [],
@@ -1002,6 +1008,7 @@ def test_sync_theographic_command_normalizes_and_imports_with_source_reference_v
     validate_source_db_mock = Mock()
     normalize_mock = Mock(return_value=bundle)
     validate_source_reference_mock = Mock()
+    filter_links_mock = Mock(return_value=(bundle, []))
     call_order: list[str] = []
     fake_conn = object()
 
@@ -1020,6 +1027,13 @@ def test_sync_theographic_command_normalizes_and_imports_with_source_reference_v
     monkeypatch.setattr(
         "bible_mcp.cli.ensure_schema",
         lambda conn: call_order.append("ensure_schema"),
+    )
+    monkeypatch.setattr(
+        "bible_mcp.cli.drop_unresolvable_entity_verse_links",
+        lambda payload_bundle, reference_validator: (
+            call_order.append("drop_unresolvable_entity_verse_links"),
+            filter_links_mock(payload_bundle, reference_validator),
+        )[1],
     )
     monkeypatch.setattr(
         "bible_mcp.cli.validate_source_reference",
@@ -1043,10 +1057,12 @@ def test_sync_theographic_command_normalizes_and_imports_with_source_reference_v
         overlay,
         link_limit=77,
     )
+    filter_links_mock.assert_called_once()
     validate_source_reference_mock.assert_called_once_with(config.source, "Genesis 1:1")
     assert call_order == [
         "validate_source_database",
         "ensure_schema",
+        "drop_unresolvable_entity_verse_links",
         "import_metadata_bundle",
     ]
     assert "Theographic sync complete" in result.stdout

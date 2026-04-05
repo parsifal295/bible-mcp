@@ -19,6 +19,7 @@ _PASSAGE_PATTERN = re.compile(
     r"^(?P<entity>.+?)\s*(대표 구절|관련 구절|연결 구절|등장 구절)$"
 )
 _EVENT_PATTERN = re.compile(r"^(?P<entity>.+?)\s*사건$")
+_PLACE_LOCATION_PATTERN = re.compile(r"^(?P<entity>.+?)\s*(위치|지도|좌표|위경도)$")
 _PLACE_HINT_TOKENS = ("성", "강", "바다", "산", "광야", "도시")
 _PROBE_ENTITY_TYPES = ("places", "events", "people")
 
@@ -112,6 +113,23 @@ class EntityQueryRouter:
                 "normalized_query": normalized_query,
                 "entity_text": entity_text,
                 "entity_type": "events",
+                "relation_type": None,
+                "direction": None,
+                "target_tool": "search_entities",
+                "_search_results": search_results,
+            }
+
+        entity_text, search_results = self._resolve_place_location_query_text(
+            normalized_query,
+            limit,
+        )
+        if entity_text != normalized_query:
+            return {
+                "intent": "entity_search",
+                "original_query": original_query,
+                "normalized_query": normalized_query,
+                "entity_text": entity_text,
+                "entity_type": "places",
                 "relation_type": None,
                 "direction": None,
                 "target_tool": "search_entities",
@@ -238,6 +256,24 @@ class EntityQueryRouter:
             limit=limit,
         )
         return stripped_text, stripped_matches
+
+    def _resolve_place_location_query_text(
+        self,
+        query_text: str,
+        limit: int,
+    ) -> tuple[str, list[dict] | None]:
+        match = _PLACE_LOCATION_PATTERN.match(query_text)
+        if match is None:
+            return query_text, None
+
+        stripped_text = match.group("entity").strip()
+        if not stripped_text:
+            return query_text, None
+        return stripped_text, self.entity_service.search(
+            stripped_text,
+            entity_type="places",
+            limit=limit,
+        )
 
     def _intent_unavailable(self, parsed: dict, intent: str):
         return {

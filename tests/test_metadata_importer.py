@@ -6,7 +6,11 @@ import pytest
 
 from bible_mcp.db.connection import connect_db
 from bible_mcp.db.schema import ensure_schema
-from bible_mcp.ingest.metadata_importer import import_metadata_bundle, import_metadata_fixtures
+from bible_mcp.ingest.metadata_importer import (
+    drop_unresolvable_entity_verse_links,
+    import_metadata_bundle,
+    import_metadata_fixtures,
+)
 from bible_mcp.metadata.loader import load_metadata_fixtures
 
 
@@ -438,3 +442,47 @@ def test_import_metadata_bundle_uses_supplied_reference_validator_and_imports_ro
     assert seen_references == ["Genesis 12:1"]
     assert conn.execute("select count(*) from people").fetchone()[0] == 2
     assert conn.execute("select count(*) from entity_verse_links").fetchone()[0] == 1
+
+
+def test_drop_unresolvable_entity_verse_links_keeps_valid_rows_and_reports_skips(
+    tmp_path: Path,
+) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    _write_minimal_metadata_bundle(fixtures)
+    _write_fixture(
+        fixtures,
+        "entity_verse_links.json",
+        [
+            {"entity_type": "people", "entity_slug": "abraham", "reference": "Genesis 12:1"},
+            {"entity_type": "people", "entity_slug": "isaac", "reference": "Genesis 99:99"},
+        ],
+    )
+    bundle = load_metadata_fixtures(fixtures)
+
+    seen_references: list[str] = []
+
+    def reference_validator(reference: str) -> None:
+        seen_references.append(reference)
+        if reference == "Genesis 99:99":
+            raise LookupError("reference not found")
+
+    filtered_bundle, skipped = drop_unresolvable_entity_verse_links(
+        bundle,
+        reference_validator=reference_validator,
+    )
+
+    assert seen_references == ["Genesis 12:1", "Genesis 99:99"]
+    assert [row.reference for row in filtered_bundle.entity_verse_links] == ["Genesis 12:1"]
+    assert skipped == [
+        {
+            "entity_type": "people",
+            "entity_slug": "isaac",
+            "reference": "Genesis 99:99",
+            "error": "reference not found",
+        }
+    ]
+    assert [row.reference for row in bundle.entity_verse_links] == [
+        "Genesis 12:1",
+        "Genesis 99:99",
+    ]

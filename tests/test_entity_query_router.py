@@ -511,6 +511,50 @@ def test_route_reuses_probed_entity_search_results() -> None:
     ]
 
 
+def test_route_strips_place_location_suffixes_before_searching() -> None:
+    entity_service = FakeEntityService()
+    entity_service.responses[("요단 강", "places")] = [
+        {
+            "entity_type": "places",
+            "slug": "jordan-river",
+            "display_name": "요단강",
+            "description": None,
+            "matched_by": "display_name",
+        }
+    ]
+    router = EntityQueryRouter(
+        entity_service,
+        relation_service=None,
+        entity_passage_service=None,
+    )
+
+    result = router.route("요단 강 위치", limit=1)
+
+    assert result["parsed"] == {
+        "original_query": "요단 강 위치",
+        "normalized_query": "요단 강 위치",
+        "entity_text": "요단 강",
+        "entity_type": "places",
+        "relation_type": None,
+        "direction": None,
+        "target_tool": "search_entities",
+    }
+    assert result["result"] == {
+        "results": [
+            {
+                "entity_type": "places",
+                "slug": "jordan-river",
+                "display_name": "요단강",
+                "description": None,
+                "matched_by": "display_name",
+            }
+        ]
+    }
+    assert entity_service.calls == [
+        {"query": "요단 강", "entity_type": "places", "limit": 1},
+    ]
+
+
 def test_route_passes_through_relation_results_unchanged() -> None:
     entity_service = FakeEntityService()
     relation_service = FakeRelationService(

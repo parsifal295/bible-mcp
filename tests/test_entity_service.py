@@ -301,6 +301,9 @@ def test_search_resolves_bundled_place_and_event_aliases(tmp_path) -> None:
             "slug": "jerusalem",
             "display_name": "예루살렘",
             "description": None,
+            "latitude": 31.778,
+            "longitude": 35.235,
+            "google_maps_url": "https://www.google.com/maps?q=31.778,35.235",
             "matched_by": "alias",
         }
     ]
@@ -310,6 +313,44 @@ def test_search_resolves_bundled_place_and_event_aliases(tmp_path) -> None:
             "slug": "resurrection",
             "display_name": "부활",
             "description": "예수의 부활 사건",
+            "matched_by": "alias",
+        }
+    ]
+
+
+def test_search_accepts_singular_place_entity_type_and_normalizes_spacing(tmp_path) -> None:
+    conn, service = _build_service(tmp_path)
+    conn.execute(
+        "insert into places(slug, display_name, latitude, longitude) values (?, ?, ?, ?)",
+        ("jordan-river", "요단강", 31.85, 35.55),
+    )
+    conn.execute(
+        "insert into entity_aliases(entity_type, entity_slug, alias) values (?, ?, ?)",
+        ("places", "jordan-river", "Jordan River"),
+    )
+    conn.commit()
+
+    assert service.search("요단 강", entity_type="place", limit=5) == [
+        {
+            "entity_type": "places",
+            "slug": "jordan-river",
+            "display_name": "요단강",
+            "description": None,
+            "latitude": 31.85,
+            "longitude": 35.55,
+            "google_maps_url": "https://www.google.com/maps?q=31.85,35.55",
+            "matched_by": "display_name",
+        }
+    ]
+    assert service.search("Jordan River", entity_type="place", limit=5) == [
+        {
+            "entity_type": "places",
+            "slug": "jordan-river",
+            "display_name": "요단강",
+            "description": None,
+            "latitude": 31.85,
+            "longitude": 35.55,
+            "google_maps_url": "https://www.google.com/maps?q=31.85,35.55",
             "matched_by": "alias",
         }
     ]

@@ -45,6 +45,11 @@
       "canonical_slug": "galilee",
       "display_name": "갈릴리",
       "aliases": ["Galilee", "갈릴래아"]
+    },
+    "jordan_653": {
+      "canonical_slug": "jordan-river",
+      "display_name": "요단강",
+      "aliases": ["Jordan", "Jordan River", "요단 강"]
     }
   }
 }

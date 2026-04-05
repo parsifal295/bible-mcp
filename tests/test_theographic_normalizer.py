@@ -138,6 +138,18 @@ def test_normalize_theographic_snapshot_builds_bundle_with_overlay_aliases_and_l
                     "verses": ["verse_gen_13_18"],
                 },
             },
+            {
+                "id": "row_place_2",
+                "fields": {
+                    "slug": "jordan_653",
+                    "displayTitle": "Jordan",
+                    "esvName": "Jordan River",
+                    "kjvName": "Jordan",
+                    "latitude": "31.85",
+                    "longitude": "35.55",
+                    "verses": ["verse_mt_3_13"],
+                },
+            },
         ],
     )
     _write_json(
@@ -165,6 +177,7 @@ def test_normalize_theographic_snapshot_builds_bundle_with_overlay_aliases_and_l
             {"id": "verse_mt_5_35", "fields": {"osisRef": "Matt.5.35"}},
             {"id": "verse_gen_13_18", "fields": {"osisRef": "Gen.13.18"}},
             {"id": "verse_gen_22_9", "fields": {"osisRef": "Gen.22.9"}},
+            {"id": "verse_mt_3_13", "fields": {"osisRef": "Matt.3.13"}},
         ],
     )
 
@@ -186,6 +199,9 @@ def test_normalize_theographic_snapshot_builds_bundle_with_overlay_aliases_and_l
     assert places["jerusalem"].display_name == "예루살렘"
     assert places["jerusalem"].latitude == 31.778
     assert places["jerusalem"].longitude == 35.235
+    assert places["jordan-river"].display_name == "요단강"
+    assert places["jordan-river"].latitude == 31.85
+    assert places["jordan-river"].longitude == 35.55
     assert places["mamre"].display_name == "Mamre"
 
     assert events["binding-of-isaac-77"].display_name == "Binding of Isaac"
@@ -197,6 +213,9 @@ def test_normalize_theographic_snapshot_builds_bundle_with_overlay_aliases_and_l
     assert ("people", "abraham", "Abraham") in alias_rows
     assert ("people", "abraham", "아브람") in alias_rows
     assert ("places", "jerusalem", "Jerusalem") in alias_rows
+    assert ("places", "jordan-river", "Jordan") in alias_rows
+    assert ("places", "jordan-river", "Jordan River") in alias_rows
+    assert ("places", "jordan-river", "요단 강") in alias_rows
 
     verse_links = [
         (row.entity_type, row.entity_slug, row.reference)
@@ -207,6 +226,7 @@ def test_normalize_theographic_snapshot_builds_bundle_with_overlay_aliases_and_l
     assert ("people", "abraham", "Genesis 22:2") not in verse_links
     assert verse_links.count(("places", "jerusalem", "Psalms 122:2")) == 1
     assert verse_links.count(("places", "jerusalem", "Luke 2:22")) == 1
+    assert verse_links.count(("places", "jordan-river", "Matthew 3:13")) == 1
     assert ("places", "jerusalem", "Matthew 5:35") not in verse_links
 
     relation_rows = [

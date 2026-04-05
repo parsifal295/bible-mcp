@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from bible_mcp.domain.metadata import ENTITY_TYPES
+from bible_mcp.ingest.source_db import SourceSchemaError
 from bible_mcp.metadata.loader import DEFAULT_FIXTURE_DIR, load_metadata_fixtures
 from bible_mcp.services.passage_service import PassageService
 
@@ -75,6 +76,39 @@ def _validate_bundle(bundle, reference_validator: Callable[[str], None]) -> None
 def _delete_metadata_rows(conn: sqlite3.Connection) -> None:
     for table in METADATA_TABLES:
         conn.execute(f"delete from {table}")
+
+
+def drop_unresolvable_entity_verse_links(
+    bundle,
+    reference_validator: Callable[[str], None],
+):
+    skipped: list[dict[str, str]] = []
+    valid_links = []
+
+    for link in bundle.entity_verse_links:
+        try:
+            reference_validator(link.reference)
+        except (LookupError, ValueError, SourceSchemaError) as exc:
+            skipped.append(
+                {
+                    "entity_type": link.entity_type,
+                    "entity_slug": link.entity_slug,
+                    "reference": link.reference,
+                    "error": str(exc),
+                }
+            )
+            continue
+        valid_links.append(link)
+
+    filtered_bundle = type(bundle)(
+        people=list(bundle.people),
+        places=list(bundle.places),
+        events=list(bundle.events),
+        aliases=list(bundle.aliases),
+        entity_verse_links=valid_links,
+        relationships=list(bundle.relationships),
+    )
+    return filtered_bundle, skipped
 
 
 def import_metadata_bundle(
