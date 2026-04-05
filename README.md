@@ -6,6 +6,12 @@ V2 metadata slice: metadata is fetched and synced explicitly before indexing. `b
 
 V2 entity search defaults to `people` for backwards compatibility; to search bundled place or event metadata, call `search_entities` with an explicit `entity_type` such as `places` or `events`.
 
+## Client-Side Entity Retry
+
+Bible MCP assumes entity rewrite happens in the MCP client when Korean input needs English metadata retries. The server exposes `route_entity_query`, but the retry loop stays in the client layer.
+
+See [docs/integrations/llm-entity-rewrite.md](docs/integrations/llm-entity-rewrite.md) for the integration contract and retry flow.
+
 ## Setup
 
 1. Create and activate a virtual environment.
