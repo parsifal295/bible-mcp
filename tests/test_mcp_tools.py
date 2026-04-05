@@ -987,10 +987,10 @@ def test_fetch_theographic_command_fetches_snapshot_and_prints_result(monkeypatc
     monkeypatch.setattr("bible_mcp.cli.load_theographic_config", lambda: theographic_config)
     monkeypatch.setattr("bible_mcp.cli.fetch_theographic_snapshot", fetch_mock)
 
-    result = CliRunner().invoke(app, ["fetch-theographic"], env={})
+    result = CliRunner().invoke(app, ["fetch-theographic", "--ref", "stable"], env={})
 
     assert result.exit_code == 0
-    fetch_mock.assert_called_once_with(theographic_config)
+    fetch_mock.assert_called_once_with(theographic_config, ref="stable")
     assert "abc123" in result.stdout
 
 

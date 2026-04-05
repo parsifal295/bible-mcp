@@ -31,7 +31,7 @@ def test_fetch_theographic_snapshot_writes_raw_files_and_manifest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = "example/theographic"
-    ref = "test-ref"
+    ref = "stable"
     resolved_commit = "a" * 40
     raw_payloads = {
         "people.json": b'{"people": [{"id": "abraham"}]}',
@@ -42,7 +42,7 @@ def test_fetch_theographic_snapshot_writes_raw_files_and_manifest(
 
     def fake_urlopen(request):
         url = request.full_url if hasattr(request, "full_url") else request
-        if url == f"https://api.github.com/repos/{repo}/commits/{ref}":
+        if url == f"https://api.github.com/repos/{repo}/commits/release":
             payload = json.dumps({"sha": resolved_commit}).encode("utf-8")
             return _FakeResponse(payload)
         for filename, body in raw_payloads.items():
@@ -59,7 +59,7 @@ def test_fetch_theographic_snapshot_writes_raw_files_and_manifest(
     )
 
     config = TheographicConfig(repo=repo, ref=ref, vendor_dir=tmp_path / "vendor")
-    snapshot_dir = fetch_theographic_snapshot(config)
+    snapshot_dir = fetch_theographic_snapshot(config, ref="release")
 
     assert snapshot_dir == config.vendor_dir / resolved_commit
     raw_dir = snapshot_dir / "raw"
@@ -71,12 +71,15 @@ def test_fetch_theographic_snapshot_writes_raw_files_and_manifest(
 
     manifest = json.loads((snapshot_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["source_repo"] == repo
-    assert manifest["source_ref"] == ref
+    assert manifest["source_ref"] == "release"
     assert manifest["resolved_commit"] == resolved_commit
     assert manifest["license"] == "CC BY-SA 4.0"
     assert "fetched_at" in manifest
     assert sorted(manifest["files"]) == sorted(REQUIRED_FILENAMES)
     for filename, payload in raw_payloads.items():
+        assert manifest["files"][filename]["url"] == (
+            f"https://raw.githubusercontent.com/{repo}/{resolved_commit}/json/{filename}"
+        )
         assert manifest["files"][filename]["sha256"] == hashlib.sha256(payload).hexdigest()
 
 

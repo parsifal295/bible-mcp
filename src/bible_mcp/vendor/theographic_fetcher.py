@@ -24,8 +24,12 @@ _REQUEST_HEADERS = {
 }
 
 
-def fetch_theographic_snapshot(config: TheographicConfig) -> Path:
-    resolved_commit = _resolve_commit(config.repo, config.ref)
+def fetch_theographic_snapshot(
+    config: TheographicConfig,
+    ref: str | None = None,
+) -> Path:
+    requested_ref = ref or config.ref
+    resolved_commit = _resolve_commit(config.repo, requested_ref)
     snapshot_dir = config.vendor_dir / resolved_commit
     staging_dir = config.vendor_dir / f".staging-{resolved_commit}-{uuid4().hex}"
     config.vendor_dir.mkdir(parents=True, exist_ok=True)
@@ -36,17 +40,19 @@ def fetch_theographic_snapshot(config: TheographicConfig) -> Path:
 
         file_entries: dict[str, dict[str, str | int]] = {}
         for filename in REQUIRED_FILENAMES:
+            source_url = f"{RAW_GITHUB_BASE}/{config.repo}/{resolved_commit}/json/{filename}"
             payload = _download_raw_file(config.repo, resolved_commit, filename)
             target_file = raw_dir / filename
             target_file.write_bytes(payload)
             file_entries[filename] = {
+                "url": source_url,
                 "sha256": hashlib.sha256(payload).hexdigest(),
                 "bytes": len(payload),
             }
 
         manifest = {
             "source_repo": config.repo,
-            "source_ref": config.ref,
+            "source_ref": requested_ref,
             "resolved_commit": resolved_commit,
             "license": THEOGRAPHIC_LICENSE,
             "fetched_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),

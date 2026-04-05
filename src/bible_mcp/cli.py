@@ -208,9 +208,9 @@ def index() -> None:
 
 
 @app.command("fetch-theographic")
-def fetch_theographic() -> None:
+def fetch_theographic(ref: str | None = typer.Option(None, "--ref")) -> None:
     theographic_config = load_theographic_config()
-    snapshot_path = fetch_theographic_snapshot(theographic_config)
+    snapshot_path = fetch_theographic_snapshot(theographic_config, ref=ref)
     typer.echo(f"Theographic snapshot fetched: {snapshot_path}")
 
 
