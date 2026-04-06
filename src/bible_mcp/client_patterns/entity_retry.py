@@ -69,11 +69,13 @@ def classify_route_entity_query_response(response: dict[str, Any]) -> ResponseSt
 
 def build_entity_retry_prompt(max_candidates: int = 5) -> str:
     return (
-        "When a Bible entity query returns no result, generate up to "
-        f"{max_candidates} English candidate queries that may refer to the same "
-        "biblical entity in metadata. Prefer canonical Bible English names and "
-        "common English aliases. Rank by likelihood. Retry sequentially and stop "
-        "on the first successful result."
+        "For Korean Bible entity questions, call route_entity_query once with the "
+        "original user query first. If and only if the response classifies as "
+        f"not_found, generate up to {max_candidates} English candidate queries "
+        "for the same biblical entity. Prefer canonical Bible English names and "
+        "common English aliases. Retry route_entity_query sequentially, one "
+        "candidate at a time. Stop on the first successful result, ambiguity, or "
+        "hard error. Keep the final user-facing answer in Korean."
     )
 
 

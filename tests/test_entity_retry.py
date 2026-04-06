@@ -87,9 +87,10 @@ def test_classify_response_returns_error_when_tool_error_exists() -> None:
 def test_build_entity_retry_prompt_mentions_sequential_retry_and_candidate_limit() -> None:
     prompt = build_entity_retry_prompt(max_candidates=5)
 
+    assert "call route_entity_query once with the original user query first" in prompt
     assert "up to 5 English candidate queries" in prompt
-    assert "Retry sequentially" in prompt
-    assert "first successful result" in prompt
+    assert "Retry route_entity_query sequentially" in prompt
+    assert "Keep the final user-facing answer in Korean" in prompt
 
 
 def test_resolve_entity_query_with_retries_stops_on_first_success() -> None:
